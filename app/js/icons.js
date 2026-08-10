@@ -109,10 +109,6 @@ const UI_PATHS = {
   wind: c => [`M3 9h9.5a2.8 2.8 0 1 0-2.8-2.8`, `M3 14.5h13a3 3 0 1 1-3 3`, `M3 19.5h6`],
   gust: c => [`M2 8h10.5a3 3 0 1 0-3-3`, `M2 13h7`, `M13 13h4.5a3 3 0 1 1-3 3`, `M2 18h6`],
   humid: c => [`M12 3.5c3 3.7 5.2 6.3 5.2 9a5.2 5.2 0 0 1-10.4 0c0-2.7 2.2-5.3 5.2-9Z`, `M9.5 13.5h5`],
-  sunrise: c => [`M12 3v4`, `M5.6 9.6 8 12`, `M18.4 9.6 16 12`, `M8 17a4 4 0 0 1 8 0`, `M3 21h18`],
-  sunset: c => [`M12 7V3`, `M5.6 9.6 8 12`, `M18.4 9.6 16 12`, `M8 17a4 4 0 0 1 8 0`, `M3 21h18`],
-  moonrise: c => [`M17 13a6 6 0 0 1-7.6-7.6A5.4 5.4 0 1 0 17 13Z`, `M3 20h18`],
-  moonset: c => [`M17 13a6 6 0 0 1-7.6-7.6A5.4 5.4 0 1 0 17 13Z`, `M3 20h18`, `M9 16.5 12 19.5 15 16.5`],
   back: c => [`M15 5 8 12l7 7`],
   expand: c => [`M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9`, `M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15`, `M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9`, `M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15`],
   moonToggle: c => [`M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z`],
@@ -125,11 +121,11 @@ function uiIcon(name, size, color) {
 function uiIconRaw(name, size, color) {
   const c = color || 'currentColor', s = size || 15, w = 1.8;
   if (name === 'bike') {
-    const inner = `<circle cx="6" cy="17" r="3.4" stroke="${c}" stroke-width="${w}" fill="none"/><circle cx="18" cy="17" r="3.4" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M6 17l4.5-7.5H15l3 7.5" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M9 9.5h4.5" stroke="${c}" stroke-width="${w}" fill="none"/>`;
+    const inner = `<circle cx="6" cy="17.5" r="3.3" stroke="${c}" stroke-width="${w}" fill="none"/><circle cx="18" cy="17.5" r="3.3" stroke="${c}" stroke-width="${w}" fill="none"/><circle cx="11" cy="17.5" r="1.1" stroke="${c}" stroke-width="1.4" fill="none"/><path d="M6.3 17.5H11M11 17.5 9 10.5M7.8 10.2h2.6M11 17.5 16 10.5M16 10.5 18 17.5M14.4 10.1 17.4 9.6" stroke="${c}" stroke-width="${w}" fill="none"/>`;
     return svgWrap(s, inner);
   }
   if (name === 'run') {
-    const inner = `<circle cx="14.5" cy="5" r="2.1" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M13.5 10.5 10 13l2.5 3 1 5" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M13.5 10.5 17 12l1.5 3.5" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M12.5 16 8.5 21" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M10 13 5.5 12" stroke="${c}" stroke-width="${w}" fill="none"/>`;
+    const inner = `<circle cx="14.3" cy="4.4" r="1.7" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M13.2 6.6 10.6 12.6" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M10.6 12.6 12 17.2 15.6 19.6" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M10.6 12.6 7.8 15.6 5 14.2" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M13 7.2 16.8 8.8 19.2 7.2" stroke="${c}" stroke-width="${w}" fill="none"/>`;
     return svgWrap(s, inner);
   }
   if (name === 'refresh') {
@@ -160,6 +156,20 @@ function uiIconRaw(name, size, color) {
   if (name === 'close') {
     const inner = `<path d="M6 6l12 12" stroke="${c}" stroke-width="${w}"/><path d="M18 6 6 18" stroke="${c}" stroke-width="${w}"/>`;
     return svgWrap(s, inner);
+  }
+  if (name === 'sunriseArrow' || name === 'sunsetArrow') {
+    const sun = sunRays(7.8, 8.3, 2.3, 1.5, c);
+    const arrow = name === 'sunriseArrow'
+      ? `<path d="M18 20v-9" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M14.8 14.5 18 10.8l3.2 3.7" stroke="${c}" stroke-width="${w}" fill="none"/>`
+      : `<path d="M18 10v9" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M14.8 15.5 18 19.2l3.2-3.7" stroke="${c}" stroke-width="${w}" fill="none"/>`;
+    return svgWrap(s, sun + arrow);
+  }
+  if (name === 'moonriseArrow' || name === 'moonsetArrow') {
+    const moon = `<g transform="translate(-0.1,3.4) scale(0.55)"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z" stroke="${c}" stroke-width="3" fill="none"/></g>`;
+    const arrow = name === 'moonriseArrow'
+      ? `<path d="M18 20v-9" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M14.8 14.5 18 10.8l3.2 3.7" stroke="${c}" stroke-width="${w}" fill="none"/>`
+      : `<path d="M18 10v9" stroke="${c}" stroke-width="${w}" fill="none"/><path d="M14.8 15.5 18 19.2l3.2-3.7" stroke="${c}" stroke-width="${w}" fill="none"/>`;
+    return svgWrap(s, moon + arrow);
   }
   const paths = (UI_PATHS[name] || (() => []))(c);
   const inner = paths.map(d => `<path d="${d}" stroke="${c}" stroke-width="${w}" fill="none"/>`).join('');

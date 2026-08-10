@@ -13,7 +13,8 @@
     place: null, region: null, lat: null, lon: null, fallback: false,
     theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48,
     favorites: loadFavorites(),
-    locationQuery: '', locationResults: [], locSearching: false, locFavMsg: ''
+    locationQuery: '', locationResultsRaw: [], locationResults: [], locSearching: false, locFavMsg: '', locSpainOnly: true,
+    gpsPlace: null, gpsRegion: null, gpsFallback: false
   };
 
   function loadFavorites() {
@@ -89,6 +90,7 @@
         } catch (e) { /* geocoding is best-effort */ }
       }
       Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, dayIdx: 0, hourLimit: 48 });
+      if (!known) Object.assign(state, { gpsPlace: place, gpsRegion: region, gpsFallback: fallback });
       render();
     } catch (e) {
       Object.assign(state, { loading: false, error: e.message || 'Error de red' });
@@ -106,9 +108,14 @@
 
   /* ---------- location search view ---------- */
 
+  function stripAdminPrefix(s) {
+    if (!s) return s;
+    return s.replace(/^(Provincia de|Comunidad Aut[oó]noma de|Comunidad Aut[oó]noma del|Comunidad Foral de|Comunidad de|Regi[oó]n de|Principado de)\s+/i, '');
+  }
+
   function openLocation() {
     state.view = 'location';
-    state.locationQuery = ''; state.locationResults = []; state.locSearching = false; state.locFavMsg = '';
+    state.locationQuery = ''; state.locationResultsRaw = []; state.locationResults = []; state.locSearching = false; state.locFavMsg = '';
     render();
     window.scrollTo(0, 0);
     requestAnimationFrame(() => { const el = document.getElementById('locSearchInput'); if (el) el.focus(); });
@@ -116,24 +123,37 @@
 
   function useGPS() { state.view = 'main'; load(); }
 
+  function computeDisplayedResults() {
+    const raw = state.locationResultsRaw || [];
+    const filtered = state.locSpainOnly ? raw.filter(r => r.countryCode === 'ES') : raw;
+    return filtered.slice(0, 8);
+  }
+  function toggleSpainOnly() {
+    state.locSpainOnly = !state.locSpainOnly;
+    state.locationResults = computeDisplayedResults();
+    updateResultsBlock();
+  }
+
   let searchToken = 0;
   async function runLocationSearch(q) {
     const token = ++searchToken;
     state.locSearching = true;
     updateResultsBlock();
     try {
-      const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=8&language=es&format=json');
+      const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=20&language=es&format=json');
       const json = r.ok ? await r.json() : { results: [] };
       if (token !== searchToken) return;
-      state.locationResults = (json.results || []).map(x => ({
+      state.locationResultsRaw = (json.results || []).map(x => ({
         name: x.name,
-        region: [x.admin1, x.country].filter(Boolean).join(', '),
+        region: [x.admin2, x.admin1, x.country].map(stripAdminPrefix).filter(Boolean).join(', '),
+        countryCode: x.country_code,
         lat: x.latitude, lon: x.longitude
       }));
     } catch (e) {
       if (token !== searchToken) return;
-      state.locationResults = [];
+      state.locationResultsRaw = [];
     }
+    state.locationResults = computeDisplayedResults();
     state.locSearching = false;
     updateResultsBlock();
   }
@@ -144,7 +164,7 @@
     state.locationQuery = e.target.value;
     clearTimeout(searchDebounce);
     const q = state.locationQuery.trim();
-    if (q.length < 2) { state.locationResults = []; state.locSearching = false; updateResultsBlock(); return; }
+    if (q.length < 2) { state.locationResultsRaw = []; state.locationResults = []; state.locSearching = false; updateResultsBlock(); return; }
     searchDebounce = setTimeout(() => runLocationSearch(q), 300);
   });
 
@@ -334,7 +354,8 @@
         bg: cur ? 'var(--now-bg)' : 'transparent'
       };
     });
-    const dayChartHours = dayIdxs.map(i => ({
+    const next24Idxs = []; for (let i = i0; i < Math.min(i0 + 24, H.time.length); i++) next24Idxs.push(i);
+    const next24Hours = next24Idxs.map(i => ({
       hour: H.time[i].slice(11, 13) + 'h', s: hourScore(sport, H, i, cv, L), t: H.temperature_2m[i], a: H.apparent_temperature[i],
       w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
       p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0
@@ -354,10 +375,10 @@
       dayTabs, hourRows, dayLabel, hasMore: limit < total,
       moreLabel: 'Cargar ' + Math.min(48, total - limit) + ' h más · quedan ' + (total - limit),
       dayCharts: [
-        { title: 'Conveniencia ' + sportLabel, legend: [{ label: 'nota 1-10', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(dayChartHours, P, n => scoreStyle(n, L), scoreHue, L) },
-        { title: 'Temperatura', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(dayChartHours, P, L) },
-        { title: 'Viento y dirección', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(dayChartHours, P, L) },
-        { title: 'Lluvia', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(dayChartHours, P) }
+        { title: 'Conveniencia ' + sportLabel + ' · ' + next24Hours.length + ' h', legend: [{ label: 'nota 1-10', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(next24Hours, P, n => scoreStyle(n, L), scoreHue, L) },
+        { title: 'Temperatura · ' + next24Hours.length + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(next24Hours, P, L) },
+        { title: 'Viento y dirección · ' + next24Hours.length + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(next24Hours, P, L) },
+        { title: 'Lluvia · ' + next24Hours.length + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(next24Hours, P) }
       ],
       tiles: [
         { label: 'Humedad', value: C.relative_humidity_2m, unit: '%', sub: C.relative_humidity_2m > 85 ? 'ambiente muy húmedo' : 'confortable', icon: uiIcon('humid', 15), color: L ? 'oklch(0.52 0.11 195)' : 'oklch(0.78 0.11 195)', subIcon: '' },
@@ -365,11 +386,13 @@
         { label: 'Viento', value: Math.round(cv(C.wind_speed_10m)), unit: uLbl, sub: 'del ' + dirLabel(C.wind_direction_10m) + ' (' + Math.round(C.wind_direction_10m) + '°)', icon: uiIcon('wind', 15), color: L ? 'oklch(0.5 0.12 175)' : 'oklch(0.8 0.13 175)', subIcon: windArrow(C.wind_direction_10m, 12) },
         { label: 'Rachas', value: Math.round(cv(C.wind_gusts_10m)), unit: uLbl, sub: C.wind_gusts_10m > 40 ? 'atención en bici' : 'sin sobresaltos', icon: uiIcon('gust', 15), color: L ? 'oklch(0.5 0.13 140)' : 'oklch(0.8 0.14 140)', subIcon: '' }
       ],
-      astro: [
-        { label: 'Amanece', value: D.sunrise[0].slice(11, 16), icon: uiIcon('sunrise', 18), color: L ? 'oklch(0.62 0.15 65)' : 'oklch(0.83 0.15 75)' },
-        { label: 'Atardece', value: D.sunset[0].slice(11, 16), icon: uiIcon('sunset', 18), color: L ? 'oklch(0.58 0.15 35)' : 'oklch(0.78 0.15 40)' },
-        { label: 'Sale la luna', value: mt.rise, icon: uiIcon('moonrise', 18), color: L ? 'oklch(0.55 0.06 265)' : 'oklch(0.85 0.05 260)' },
-        { label: 'Se pone', value: mt.set, icon: uiIcon('moonset', 18), color: L ? 'oklch(0.62 0.04 265)' : 'oklch(0.75 0.04 260)' }
+      sunInfo: [
+        { label: 'Amanece', value: D.sunrise[0].slice(11, 16), icon: uiIcon('sunriseArrow', 18), color: L ? 'oklch(0.62 0.15 65)' : 'oklch(0.83 0.15 75)' },
+        { label: 'Atardece', value: D.sunset[0].slice(11, 16), icon: uiIcon('sunsetArrow', 18), color: L ? 'oklch(0.58 0.15 35)' : 'oklch(0.78 0.15 40)' }
+      ],
+      moonInfo: [
+        { label: 'Sale la luna', value: mt.rise, icon: uiIcon('moonriseArrow', 18), color: L ? 'oklch(0.55 0.06 265)' : 'oklch(0.85 0.05 260)' },
+        { label: 'Se pone', value: mt.set, icon: uiIcon('moonsetArrow', 18), color: L ? 'oklch(0.62 0.04 265)' : 'oklch(0.75 0.04 260)' }
       ],
       moonPhase: mp.name, moonLit: mp.lit, hours,
       charts: [
@@ -387,26 +410,39 @@
 
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+  function placeNameFontSize(name) {
+    const len = (name || '').length;
+    if (len <= 20) return 26;
+    if (len <= 26) return 22;
+    if (len <= 32) return 19;
+    if (len <= 40) return 16;
+    return 14;
+  }
+
   function headerTpl() {
     const light = currentTheme() === 'light';
     const themeIcon = light ? uiIcon('sunToggle', 18) : uiIcon('moonToggle', 18);
     const spin = state.loading ? 'animation:spin 1s linear infinite' : '';
+    const place = state.place || '—';
+    const nameSize = placeNameFontSize(place);
     return `
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-      <div class="clickable" data-action="openLocation" style="display:flex;flex-direction:column;gap:3px;min-width:0">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
         <div style="display:flex;align-items:center;gap:6px">
           <div style="width:7px;height:7px;border-radius:99px;background:var(--live)"></div>
           <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ubicación actual</div>
         </div>
-        <div style="display:flex;align-items:center;gap:3px;min-width:0">
-          <div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(state.place || '—')}</div>
-          <div style="flex:none;color:var(--muted);display:flex;margin-top:5px">${uiIcon('chevronDown', 14)}</div>
+        <div style="display:flex;gap:8px;flex:none">
+          <div class="btn-icon" data-action="toggleTheme">${themeIcon}</div>
+          <div class="btn-icon" data-action="reload" style="${spin ? 'color:var(--text-soft)' : ''}"><span style="display:flex;${spin}">${uiIcon('refresh', 18)}</span></div>
         </div>
-        <div style="font-size:12px;color:var(--muted);font-weight:500">${esc(state.region || '')}${state.region ? ' · ' : ''}${state.data ? 'datos ' + state.data.current.time.slice(11, 16) : ''}</div>
       </div>
-      <div style="display:flex;gap:8px;flex:none">
-        <div class="btn-icon" data-action="toggleTheme">${themeIcon}</div>
-        <div class="btn-icon" data-action="reload" style="${spin ? 'color:var(--text-soft)' : ''}"><span style="display:flex;${spin}">${uiIcon('refresh', 18)}</span></div>
+      <div class="clickable" data-action="openLocation" style="display:flex;flex-direction:column;gap:3px;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0">
+          <div style="font-size:${nameSize}px;font-weight:800;letter-spacing:-.02em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(place)}</div>
+          <div style="flex:none;color:var(--muted);display:flex">${uiIcon('chevronDown', 16)}</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);font-weight:500">${esc(state.region || '')}${state.region ? ' · ' : ''}${state.data ? 'Actualizado ' + state.data.current.time.slice(11, 16) : ''}</div>
       </div>
     </div>`;
   }
@@ -490,13 +526,15 @@
       <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);font-weight:600"><span style="display:flex;color:${t.color}">${t.subIcon}</span>${esc(t.sub)}</div>
     </div>`).join('');
 
-    const astro = v.astro.map(a => `<div style="display:flex;align-items:center;gap:9px">
+    const astroItemTpl = a => `<div style="display:flex;align-items:center;gap:9px">
       <div style="flex:none;color:${a.color};display:flex">${a.icon}</div>
       <div style="display:flex;flex-direction:column">
         <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted)">${esc(a.label)}</div>
         <div style="font-size:15px;font-weight:700;font-family:'IBM Plex Mono',monospace">${esc(a.value)}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+    const sunItems = v.sunInfo.map(astroItemTpl).join('');
+    const moonItems = v.moonInfo.map(astroItemTpl).join('');
 
     const hours = v.hours.map(h => `<div style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:${h.bg};border:1px solid ${h.border};display:flex;flex-direction:column;align-items:center;gap:6px">
       <div style="font-size:10.5px;font-weight:700;color:var(--muted);font-family:'IBM Plex Mono',monospace">${esc(h.hour)}</div>
@@ -577,8 +615,12 @@
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
 
+      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${sunItems}
+      </div>
+
       <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:14px 10px">
-        ${astro}
+        ${moonItems}
         <div style="grid-column:1 / -1;padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
       </div>
 
@@ -701,13 +743,22 @@
       <div class="clickable" data-action="toggleFavorite" data-idx="${i}" style="flex:none;padding:6px;display:flex;color:${fav ? 'var(--hot)' : 'var(--muted)'}">${uiIcon(fav ? 'star' : 'starOutline', 18)}</div>
     </div>`;
   }
+  function spainToggleHtml() {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 18px">
+      <div style="font-size:12px;font-weight:700;color:var(--text-soft)">Solo España</div>
+      <div class="clickable" data-action="toggleSpainOnly" style="width:38px;height:22px;border-radius:99px;background:${state.locSpainOnly ? 'var(--now-border)' : 'var(--btn)'};border:1px solid var(--border);position:relative;flex:none">
+        <div style="position:absolute;top:2px;left:${state.locSpainOnly ? '18px' : '2px'};width:16px;height:16px;border-radius:99px;background:var(--text)"></div>
+      </div>
+    </div>`;
+  }
   function resultsBlockHtml() {
+    const toggle = spainToggleHtml();
     const q = (state.locationQuery || '').trim();
-    if (q.length < 2) return '';
-    if (state.locSearching) return `<div style="font-size:12px;color:var(--muted);font-weight:600;padding:10px 2px">Buscando…</div>`;
+    if (q.length < 2) return toggle;
+    if (state.locSearching) return toggle + `<div style="font-size:12px;color:var(--muted);font-weight:600;padding:10px 2px">Buscando…</div>`;
     const results = state.locationResults || [];
-    if (!results.length) return `<div style="font-size:12px;color:var(--muted);font-weight:600;padding:10px 2px">Sin resultados para "${esc(q)}"</div>`;
-    return `<div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${results.map(resultRowHtml).join('')}</div>`;
+    if (!results.length) return toggle + `<div style="font-size:12px;color:var(--muted);font-weight:600;padding:10px 2px">Sin resultados para "${esc(q)}"${state.locSpainOnly ? ' en España' : ''}</div>`;
+    return toggle + `<div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${results.map(resultRowHtml).join('')}</div>`;
   }
 
   function favoriteRowHtml(f, i, pos) {
@@ -744,14 +795,14 @@
 
       <div class="clickable" data-action="useGPS" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
         <div style="flex:none;color:var(--live);display:flex">${uiIcon('pin', 18)}</div>
-        <div style="display:flex;flex-direction:column">
+        <div style="display:flex;flex-direction:column;min-width:0">
           <div style="font-size:13px;font-weight:800">Mi ubicación</div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted)">Usar la ubicación del dispositivo</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${state.gpsPlace && !state.gpsFallback ? esc(state.gpsPlace) + (state.gpsRegion ? ', ' + esc(state.gpsRegion) : '') : 'Usar la ubicación del dispositivo'}</div>
         </div>
       </div>
 
-      <input id="locSearchInput" type="text" autocomplete="off" placeholder="Buscar ciudad, pueblo..." value="${esc(state.locationQuery || '')}"
-        style="width:100%;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;font-family:Manrope,Helvetica,sans-serif;outline:none">
+      <input id="locSearchInput" type="text" inputmode="search" autocomplete="off" placeholder="Buscar ciudad, pueblo..." value="${esc(state.locationQuery || '')}"
+        style="width:100%;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:16px;font-family:Manrope,Helvetica,sans-serif;outline:none">
 
       <div id="locResultsBlock">${resultsBlockHtml()}</div>
 
@@ -785,6 +836,7 @@
     else if (action === 'useGPS') useGPS();
     else if (action === 'pickResult') { const item = state.locationResults[Number(t.getAttribute('data-idx'))]; if (item) selectLocation(item); }
     else if (action === 'toggleFavorite') { const item = state.locationResults[Number(t.getAttribute('data-idx'))]; if (item) toggleFavoriteItem(item); }
+    else if (action === 'toggleSpainOnly') toggleSpainOnly();
     else if (action === 'pickFavorite') { const item = state.favorites[Number(t.getAttribute('data-favidx'))]; if (item) selectLocation(item); }
     else if (action === 'removeFavorite') removeFavoriteAt(Number(t.getAttribute('data-favidx')));
     else if (action === 'openHours') openHours();
