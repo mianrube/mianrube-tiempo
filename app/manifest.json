@@ -1,0 +1,17 @@
+{
+  "name": "mianrube tiempo",
+  "short_name": "mianrube tiempo",
+  "description": "El tiempo en tu ubicación actual, con valoración de condiciones para bici y running",
+  "id": "/app/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141a22",
+  "theme_color": "#141a22",
+  "lang": "es",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
