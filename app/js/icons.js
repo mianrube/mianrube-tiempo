@@ -115,7 +115,8 @@ const UI_PATHS = {
   moonset: c => [`M17 13a6 6 0 0 1-7.6-7.6A5.4 5.4 0 1 0 17 13Z`, `M3 20h18`, `M9 16.5 12 19.5 15 16.5`],
   back: c => [`M15 5 8 12l7 7`],
   expand: c => [`M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9`, `M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15`, `M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9`, `M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15`],
-  moonToggle: c => [`M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z`]
+  moonToggle: c => [`M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z`],
+  chevronDown: c => [`M6 9l6 6 6-6`]
 };
 
 function uiIcon(name, size, color) {
@@ -142,6 +143,22 @@ function uiIconRaw(name, size, color) {
       const x1 = 12 + Math.cos(a) * 6.6, y1 = 12 + Math.sin(a) * 6.6, x2 = 12 + Math.cos(a) * 8.6, y2 = 12 + Math.sin(a) * 8.6;
       inner += `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${c}" stroke-width="${w}"/>`;
     }
+    return svgWrap(s, inner);
+  }
+  if (name === 'pin') {
+    const inner = `<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z" stroke="${c}" stroke-width="${w}" fill="none"/><circle cx="12" cy="9.5" r="2.3" stroke="${c}" stroke-width="${w}" fill="none"/>`;
+    return svgWrap(s, inner);
+  }
+  if (name === 'star') {
+    const inner = `<path d="M12 3.4l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1-5.4-2.9-5.4 2.9 1.1-6.1-4.5-4.3 6.1-.8Z" fill="${c}" stroke="${c}" stroke-width="1"/>`;
+    return svgWrap(s, inner);
+  }
+  if (name === 'starOutline') {
+    const inner = `<path d="M12 3.4l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1-5.4-2.9-5.4 2.9 1.1-6.1-4.5-4.3 6.1-.8Z" stroke="${c}" stroke-width="1.5" fill="none"/>`;
+    return svgWrap(s, inner);
+  }
+  if (name === 'close') {
+    const inner = `<path d="M6 6l12 12" stroke="${c}" stroke-width="${w}"/><path d="M18 6 6 18" stroke="${c}" stroke-width="${w}"/>`;
     return svgWrap(s, inner);
   }
   const paths = (UI_PATHS[name] || (() => []))(c);
