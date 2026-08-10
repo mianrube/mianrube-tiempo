@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg1: oklch(0.24 0.045 255); --bg2: oklch(0.16 0.02 255);
+    --text: oklch(0.97 0.005 250); --text-soft: oklch(0.86 0.015 250);
+    --muted: oklch(0.68 0.02 250); --muted2: oklch(0.6 0.02 250); --muted3: oklch(0.52 0.02 250);
+    --surface: oklch(0.235 0.025 255); --border: oklch(0.3 0.025 255);
+    --hero-a: oklch(0.29 0.04 255); --hero-b: oklch(0.23 0.028 255); --hero-border: oklch(0.34 0.03 255);
+    --btn: oklch(0.26 0.03 255); --btn-hover: oklch(0.32 0.04 255);
+    --now-bg: oklch(0.3 0.05 255); --now-border: oklch(0.45 0.08 255);
+    --track: oklch(0.3 0.02 255);
+    --hot: oklch(0.75 0.15 45); --cold: oklch(0.75 0.13 235);
+    --teal: oklch(0.84 0.09 195); --warm: oklch(0.66 0.04 60); --live: oklch(0.75 0.15 145);
+    --err-bg: oklch(0.26 0.05 25); --err-border: oklch(0.4 0.09 25);
+  }
+  [data-theme="light"] {
+    --bg1: oklch(0.95 0.03 250); --bg2: oklch(0.985 0.006 250);
+    --text: oklch(0.27 0.02 255); --text-soft: oklch(0.38 0.02 255);
+    --muted: oklch(0.5 0.02 250); --muted2: oklch(0.56 0.02 250); --muted3: oklch(0.65 0.02 250);
+    --surface: oklch(0.995 0.003 250); --border: oklch(0.9 0.008 250);
+    --hero-a: oklch(0.965 0.025 250); --hero-b: oklch(0.995 0.005 250); --hero-border: oklch(0.9 0.012 250);
+    --btn: oklch(0.97 0.006 250); --btn-hover: oklch(0.93 0.01 250);
+    --now-bg: oklch(0.94 0.035 250); --now-border: oklch(0.8 0.06 250);
+    --track: oklch(0.92 0.008 250);
+    --hot: oklch(0.6 0.17 40); --cold: oklch(0.55 0.15 245);
+    --teal: oklch(0.5 0.13 195); --warm: oklch(0.58 0.08 55); --live: oklch(0.58 0.16 145);
+    --err-bg: oklch(0.95 0.04 25); --err-border: oklch(0.82 0.09 25);
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg2); }
+  a { color: var(--teal); text-decoration: none; }
+  a:hover { opacity: .8; }
+  .noscroll::-webkit-scrollbar { display: none; }
+  .noscroll { scrollbar-width: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: .35; } 50% { opacity: .7; } }
+</style>
+</helmet>
+<div style="min-height:100vh;background:radial-gradient(120% 60% at 50% 0%, var(--bg1) 0%, var(--bg2) 60%);display:flex;justify-content:center;font-family:Manrope,Helvetica,sans-serif;color:var(--text)">
+  <div style="width:100%;max-width:440px;padding:22px 18px 44px;display:flex;flex-direction:column;gap:14px">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:7px;height:7px;border-radius:99px;background:var(--live)"></div>
+          <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ubicación actual</div>
+        </div>
+        <div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ place }}</div>
+        <div style="font-size:12px;color:var(--muted);font-weight:500">{{ region }} · datos {{ updated }}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex:none">
+        <div onClick="{{ toggleTheme }}" style="width:40px;height:40px;border-radius:14px;background:var(--btn);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;color:var(--text-soft)" style-hover="background:var(--btn-hover)">{{ themeIcon }}</div>
+        <div onClick="{{ reload }}" style="width:40px;height:40px;border-radius:14px;background:var(--btn);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--btn-hover)">{{ refreshIcon }}</div>
+      </div>
+    </div>
+
+    <sc-if value="{{ loading }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="height:190px;border-radius:24px;background:var(--surface);animation:pulse 1.6s ease-in-out infinite"></div>
+        <div style="height:110px;border-radius:20px;background:var(--surface);animation:pulse 1.6s ease-in-out infinite"></div>
+        <div style="height:140px;border-radius:20px;background:var(--surface);animation:pulse 1.6s ease-in-out infinite"></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ error }}">
+      <div style="padding:18px;border-radius:20px;background:var(--err-bg);border:1px solid var(--err-border);display:flex;flex-direction:column;gap:10px">
+        <div style="font-weight:700;font-size:15px">No se pudo cargar el tiempo</div>
+        <div style="font-size:13px;color:var(--text-soft)">{{ error }}</div>
+        <div onClick="{{ reload }}" style="align-self:flex-start;padding:9px 16px;border-radius:99px;background:var(--text);color:var(--bg2);font-weight:700;font-size:13px;cursor:pointer">Reintentar</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ viewMain }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <div style="position:relative;padding:20px;border-radius:26px;background:linear-gradient(165deg, var(--hero-a) 0%, var(--hero-b) 100%);border:1px solid var(--hero-border);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:flex-start;gap:2px">
+                <div style="font-size:74px;font-weight:800;line-height:.9;letter-spacing:-.045em;font-family:'IBM Plex Mono',monospace">{{ temp }}</div>
+                <div style="font-size:26px;font-weight:600;margin-top:6px;color:var(--text-soft)">°C</div>
+              </div>
+              <div style="font-size:16px;font-weight:700;margin-top:6px">{{ condition }}</div>
+              <div style="font-size:13px;color:var(--muted);font-weight:500">Sensación de {{ feels }}°C</div>
+            </div>
+            <div style="flex:none">{{ bigIcon }}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hero-border)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700"><span style="color:var(--hot)">▲</span>{{ tmaxLabel }}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700"><span style="color:var(--cold)">▼</span>{{ tminLabel }}</div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:4px 9px 4px 7px;border-radius:99px;background:{{ uvBg }};border:1px solid {{ uvBorder }}">
+              <div style="width:7px;height:7px;border-radius:99px;background:{{ uvColor }}"></div>
+              <div style="font-size:11px;font-weight:800;color:{{ uvColor }};font-family:'IBM Plex Mono',monospace">UV {{ uv }}</div>
+              <div style="font-size:11px;font-weight:600;color:var(--text-soft)">{{ uvLabel }}</div>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{ showIndex }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:6px">
+              <sc-for list="{{ sportChips }}" as="s" hint-placeholder-count="2">
+                <div onClick="{{ s.pick }}" style="display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:99px;background:{{ s.bg }};border:1px solid {{ s.border }};color:{{ s.color }};font-size:12px;font-weight:800;cursor:pointer">
+                  <div style="display:flex">{{ s.icon }}</div>{{ s.label }}
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:15px 16px;border-radius:20px;background:{{ act.bg }};border:1px solid {{ act.border }};display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="flex:none;width:44px;height:44px;border-radius:15px;background:{{ act.dot }};display:grid;place-items:center">{{ act.icon }}</div>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <div style="font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ahora para {{ act.name }}</div>
+                  <div style="font-size:17px;font-weight:800;line-height:1.1;color:{{ act.text }};text-wrap:pretty">{{ act.label }}</div>
+                </div>
+                <div style="margin-left:auto;flex:none;display:flex;align-items:baseline;gap:2px;padding:6px 12px;border-radius:99px;background:{{ act.scoreBg }};border:1px solid {{ act.scoreBorder }};font-family:'IBM Plex Mono',monospace;color:{{ act.scoreColor }}">
+                  <div style="font-size:22px;font-weight:800;line-height:1">{{ act.score }}</div>
+                  <div style="font-size:10px;font-weight:600;opacity:.7">/10</div>
+                </div>
+              </div>
+              <div style="font-size:12.5px;color:var(--text-soft);font-weight:500;text-wrap:pretty">{{ act.note }}</div>
+              <div style="padding-top:11px;border-top:1px solid {{ act.border }};display:flex;align-items:center;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:1px">
+                  <div style="font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--muted)">Mejor hueco (24 h)</div>
+                  <div style="display:flex;align-items:baseline;gap:7px">
+                    <div style="font-size:16px;font-weight:800;font-family:'IBM Plex Mono',monospace">{{ act.bestText }}</div>
+                    <div style="font-size:11px;font-weight:600;color:var(--muted)">{{ act.bestDay }}</div>
+                  </div>
+                </div>
+                <div style="margin-left:auto;display:flex;align-items:baseline;gap:2px;padding:5px 11px;border-radius:99px;background:{{ act.bestBg }};border:1px solid {{ act.bestBorder }};font-family:'IBM Plex Mono',monospace;color:{{ act.bestColor }}">
+                  <div style="font-size:18px;font-weight:800;line-height:1">{{ act.bestScore }}</div>
+                  <div style="font-size:10px;font-weight:600;opacity:.7">/10</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
+            <div style="padding:13px 14px;border-radius:18px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <div style="color:{{ t.color }};display:flex">{{ t.icon }}</div>
+                <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--muted)">{{ t.label }}</div>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:5px">
+                <div style="font-size:23px;font-weight:800;font-family:'IBM Plex Mono',monospace;letter-spacing:-.03em">{{ t.value }}</div>
+                <div style="font-size:11px;font-weight:600;color:var(--muted)">{{ t.unit }}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);font-weight:600"><span style="display:flex;color:{{ t.color }}">{{ t.subIcon }}</span>{{ t.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:14px 10px">
+          <sc-for list="{{ astro }}" as="a" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:9px">
+              <div style="flex:none;color:{{ a.color }};display:flex">{{ a.icon }}</div>
+              <div style="display:flex;flex-direction:column">
+                <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted)">{{ a.label }}</div>
+                <div style="font-size:15px;font-weight:700;font-family:'IBM Plex Mono',monospace">{{ a.value }}</div>
+              </div>
+            </div>
+          </sc-for>
+          <div style="grid-column:1 / -1;padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna {{ moonPhase }} · {{ moonLit }}% iluminada</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
+            <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:800;color:var(--muted)">Próximas horas</div>
+            <div onClick="{{ openHours }}" style="display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;background:var(--btn);border:1px solid var(--border);cursor:pointer;font-size:11px;font-weight:700;color:var(--text-soft)" style-hover="background:var(--btn-hover)">{{ expandIcon }}Ver todas</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <sc-for list="{{ hours }}" as="h" hint-placeholder-count="5">
+              <div style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:{{ h.bg }};border:1px solid {{ h.border }};display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="font-size:10.5px;font-weight:700;color:var(--muted);font-family:'IBM Plex Mono',monospace">{{ h.hour }}</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:3px;min-width:34px;padding:2px 4px;border-radius:8px;background:{{ h.scoreBg }};border:1px solid {{ h.scoreBorder }}">
+                  <div style="display:flex">{{ h.sportIcon }}</div>
+                  <div style="font-size:12px;font-weight:800;color:{{ h.scoreColor }};font-family:'IBM Plex Mono',monospace">{{ h.score }}</div>
+                </div>
+                <div>{{ h.icon }}</div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:0px">
+                  <div style="font-size:16px;font-weight:800;font-family:'IBM Plex Mono',monospace">{{ h.temp }}°</div>
+                  <div style="font-size:9.5px;font-weight:600;color:var(--warm);font-family:'IBM Plex Mono',monospace;white-space:nowrap">{{ h.feels }}°</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+                  <div style="font-size:11px;font-weight:700;color:{{ h.probColor }};font-family:'IBM Plex Mono',monospace">{{ h.prob }}%</div>
+                  <div style="font-size:10px;font-weight:600;color:{{ h.mmColor }};font-family:'IBM Plex Mono',monospace">{{ h.mm }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:1px;margin-top:1px">
+                  <div style="display:flex;align-items:center;gap:3px">
+                    <div style="display:flex;color:var(--teal)">{{ h.arrow }}</div>
+                    <div style="font-size:10.5px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:var(--teal)">{{ h.dir }}</div>
+                  </div>
+                  <div style="font-size:9.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text-soft);white-space:nowrap">{{ h.wind }}</div>
+                  <div style="font-size:9.5px;font-weight:600;color:var(--muted2);font-family:'IBM Plex Mono',monospace;white-space:nowrap">r {{ h.gust }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-for list="{{ charts }}" as="c" hint-placeholder-count="3">
+          <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 2px">
+              <div style="font-size:12px;font-weight:800;letter-spacing:.02em">{{ c.title }}</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <sc-for list="{{ c.legend }}" as="l" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <div style="width:14px;height:3px;border-radius:99px;background:{{ l.color }};opacity:{{ l.opacity }}"></div>
+                    <div style="font-size:10px;font-weight:600;color:var(--muted)">{{ l.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div>{{ c.svg }}</div>
+          </div>
+        </sc-for>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:800;color:var(--muted);padding-left:2px">Próximos 7 días</div>
+          <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">
+            <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid {{ d.sep }}">
+                <div style="width:52px;flex:none;display:flex;flex-direction:column">
+                  <div style="font-size:13px;font-weight:800;letter-spacing:-.01em">{{ d.name }}</div>
+                  <div style="font-size:10px;font-weight:600;color:var(--muted2);font-family:'IBM Plex Mono',monospace">{{ d.date }}</div>
+                </div>
+                <div style="flex:none">{{ d.icon }}</div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+                  <div style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace">
+                    <div style="font-size:12px;font-weight:600;color:var(--muted);width:26px;text-align:right">{{ d.min }}°</div>
+                    <div style="flex:1;height:5px;border-radius:99px;background:var(--track);position:relative">
+                      <div style="position:absolute;top:0;bottom:0;left:{{ d.barLeft }};width:{{ d.barWidth }};border-radius:99px;background:linear-gradient(90deg, var(--cold), var(--hot))"></div>
+                    </div>
+                    <div style="font-size:13px;font-weight:800;width:28px">{{ d.max }}°</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:11px;font-size:10px;font-weight:700;font-family:'IBM Plex Mono',monospace">
+                    <div style="display:flex;align-items:center;gap:4px;color:{{ d.rainColor }}">{{ d.rainIcon }}{{ d.rain }}</div>
+                    <div style="display:flex;align-items:center;gap:4px;color:var(--teal)">{{ d.arrow }}{{ d.wind }}</div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="text-align:center;font-size:10px;color:var(--muted3);font-weight:600;letter-spacing:.06em;padding-top:6px">Datos: Open-Meteo · {{ coords }}</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ viewHours }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div onClick="{{ backToMain }}" style="display:flex;align-items:center;gap:6px;padding:8px 13px 8px 10px;border-radius:99px;background:var(--btn);border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-soft)" style-hover="background:var(--btn-hover)">{{ backIcon }}Volver</div>
+          <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:800;color:var(--muted)">Hora a hora</div>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <sc-for list="{{ sportChips }}" as="s" hint-placeholder-count="2">
+              <div onClick="{{ s.pick }}" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:99px;background:{{ s.bg }};border:1px solid {{ s.border }};color:{{ s.color }};font-size:11px;font-weight:800;cursor:pointer">
+                <div style="display:flex">{{ s.icon }}</div>{{ s.label }}
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:6px">
+          <sc-for list="{{ dayTabs }}" as="t" hint-placeholder-count="5">
+            <div onClick="{{ t.pick }}" style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:{{ t.bg }};border:1px solid {{ t.border }};cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div style="display:flex;flex-direction:column;align-items:center">
+                <div style="font-size:11px;font-weight:800;color:{{ t.color }}">{{ t.label }}</div>
+                <div style="font-size:9px;font-weight:600;color:var(--muted2);font-family:'IBM Plex Mono',monospace">{{ t.date }}</div>
+              </div>
+              <div>{{ t.icon }}</div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:0px;font-family:'IBM Plex Mono',monospace">
+                <div style="font-size:14px;font-weight:800">{{ t.max }}</div>
+                <div style="font-size:10px;font-weight:600;color:var(--muted)">{{ t.min }}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:1px;font-family:'IBM Plex Mono',monospace">
+                <div style="font-size:10.5px;font-weight:700;color:{{ t.probColor }}">{{ t.prob }}</div>
+                <div style="font-size:9.5px;font-weight:600;color:{{ t.mmColor }}">{{ t.mm }}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:1px;font-family:'IBM Plex Mono',monospace">
+                <div style="display:flex;align-items:center;gap:2px;color:var(--teal)">
+                  <div style="display:flex">{{ t.arrow }}</div>
+                  <div style="font-size:10px;font-weight:800">{{ t.wind }}</div>
+                </div>
+                <div style="font-size:9.5px;font-weight:600;color:var(--muted2)">r {{ t.gust }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-for list="{{ dayCharts }}" as="c" hint-placeholder-count="3">
+          <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 2px">
+              <div style="font-size:12px;font-weight:800;letter-spacing:.02em">{{ c.title }}</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <sc-for list="{{ c.legend }}" as="l" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <div style="width:14px;height:3px;border-radius:99px;background:{{ l.color }};opacity:{{ l.opacity }}"></div>
+                    <div style="font-size:10px;font-weight:600;color:var(--muted)">{{ l.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div>{{ c.svg }}</div>
+          </div>
+        </sc-for>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:800;color:var(--muted);padding-left:2px">Detalle · {{ dayLabel }}</div>
+          <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">
+            <div style="display:grid;grid-template-columns:42px 28px 1fr 54px 66px 30px;gap:6px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted2)">
+              <div>Hora</div><div></div><div>Temp / ST</div><div>Lluvia</div><div>Viento</div><div>Nota</div>
+            </div>
+            <sc-for list="{{ hourRows }}" as="r" hint-placeholder-count="12">
+              <div>
+                <sc-if value="{{ r.head }}">
+                  <div style="padding:7px 12px;background:var(--btn);border-top:1px solid var(--border);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--muted)">{{ r.head }}</div>
+                </sc-if>
+                <div style="display:grid;grid-template-columns:42px 28px 1fr 54px 66px 30px;gap:6px;align-items:center;padding:9px 12px;border-top:1px solid {{ r.sep }};background:{{ r.bg }}">
+                <div style="display:flex;flex-direction:column">
+                  <div style="font-size:13px;font-weight:800;font-family:'IBM Plex Mono',monospace">{{ r.hour }}</div>
+                  <div style="font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)">{{ r.now }}</div>
+                </div>
+                <div style="display:flex">{{ r.icon }}</div>
+                <div style="display:flex;flex-direction:column;min-width:0">
+                  <div style="display:flex;align-items:baseline;gap:5px;font-family:'IBM Plex Mono',monospace">
+                    <div style="font-size:15px;font-weight:800">{{ r.temp }}°</div>
+                    <div style="font-size:10.5px;font-weight:600;color:var(--warm)">{{ r.feels }}°</div>
+                  </div>
+                  <div style="font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.cond }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace">
+                  <div style="font-size:12px;font-weight:800;color:{{ r.probColor }}">{{ r.prob }}</div>
+                  <div style="font-size:10px;font-weight:600;color:{{ r.mmColor }}">{{ r.mm }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace">
+                  <div style="display:flex;align-items:center;gap:4px;color:var(--teal)">
+                    <div style="display:flex">{{ r.arrow }}</div>
+                    <div style="font-size:11px;font-weight:800">{{ r.dir }} {{ r.wind }}</div>
+                  </div>
+                  <div style="font-size:10px;font-weight:600;color:var(--muted2)">r {{ r.gust }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:3px 0;border-radius:8px;background:{{ r.scoreBg }};border:1px solid {{ r.scoreBorder }}">
+                  <div style="display:flex">{{ r.sportIcon }}</div>
+                  <div style="font-size:12px;font-weight:800;color:{{ r.scoreColor }};font-family:'IBM Plex Mono',monospace;line-height:1">{{ r.score }}</div>
+                </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ hasMore }}">
+            <div onClick="{{ loadMore }}" style="align-self:center;padding:9px 18px;border-radius:99px;background:var(--btn);border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-soft)" style-hover="background:var(--btn-hover)">{{ moreLabel }}</div>
+          </sc-if>
+        </div>
+
+        <div onClick="{{ backToMain }}" style="align-self:center;padding:9px 18px;border-radius:99px;background:var(--btn);border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-soft)" style-hover="background:var(--btn-hover)">Volver al resumen</div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:932},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Interfaz&quot;},&quot;hoursAhead&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:5,&quot;min&quot;:3,&quot;max&quot;:8,&quot;step&quot;:1,&quot;unit&quot;:&quot;h&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Datos&quot;},&quot;windUnit&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;km/h&quot;,&quot;m/s&quot;],&quot;default&quot;:&quot;km/h&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Datos&quot;},&quot;showCyclingIndex&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Interfaz&quot;}}">
+class Component extends DCLogic {
+  state = { loading: true, error: null, data: null, place: null, region: null, lat: null, lon: null, fallback: false, theme: null, view: 'main', dayIdx: 0, sport: 'bike' };
+
+  openHours = () => { this.setState({ view: 'hours', dayIdx: 0, hourLimit: 48 }); window.scrollTo(0, 0); };
+  backToMain = () => { this.setState({ view: 'main' }); window.scrollTo(0, 0); };
+  pickDay = i => () => this.setState({ dayIdx: i, hourLimit: 48 });
+  loadMore = () => this.setState(s => ({ hourLimit: (s.hourLimit || 48) + 48 }));
+  pickSport = k => () => this.setState({ sport: k });
+
+  componentDidMount() { this.applyTheme(); this.load(); }
+  componentDidUpdate() { this.applyTheme(); }
+
+  get theme() { return this.state.theme || this.props.theme || 'dark'; }
+  get light() { return this.theme === 'light'; }
+  applyTheme() { document.documentElement.setAttribute('data-theme', this.theme); }
+  toggleTheme = () => this.setState({ theme: this.theme === 'light' ? 'dark' : 'light' });
+
+  // theme-aware palette for canvas-drawn pieces (icons, charts)
+  pal() {
+    return this.light ? {
+      sun: 'oklch(0.72 0.16 70)', moon: 'oklch(0.6 0.06 265)', cloud: 'oklch(0.62 0.02 250)',
+      rain: 'oklch(0.55 0.15 245)', snow: 'oklch(0.68 0.04 250)', bolt: 'oklch(0.72 0.17 80)',
+      warmLine: 'oklch(0.64 0.18 45)', warmSoft: 'oklch(0.72 0.07 45)', warmText: 'oklch(0.45 0.14 45)',
+      tealLine: 'oklch(0.55 0.14 195)', tealSoft: 'oklch(0.7 0.07 195)', tealText: 'oklch(0.42 0.12 195)',
+      rainBar: 'oklch(0.6 0.15 250)', probLine: 'oklch(0.55 0.13 235)', probText: 'oklch(0.42 0.12 240)',
+      dot: 'oklch(0.995 0.003 250)', axis: 'oklch(0.58 0.02 250)', grid: 'oklch(0.88 0.008 250)',
+      chip: 'oklch(0.4 0.02 255)'
+    } : {
+      sun: 'oklch(0.83 0.16 80)', moon: 'oklch(0.9 0.05 255)', cloud: 'oklch(0.8 0.02 250)',
+      rain: 'oklch(0.74 0.14 245)', snow: 'oklch(0.95 0.02 250)', bolt: 'oklch(0.86 0.16 90)',
+      warmLine: 'oklch(0.8 0.16 55)', warmSoft: 'oklch(0.72 0.06 55)', warmText: 'oklch(0.93 0.04 60)',
+      tealLine: 'oklch(0.8 0.15 195)', tealSoft: 'oklch(0.7 0.09 195)', tealText: 'oklch(0.92 0.04 195)',
+      rainBar: 'oklch(0.7 0.15 250)', probLine: 'oklch(0.85 0.11 235)', probText: 'oklch(0.9 0.06 235)',
+      dot: 'oklch(0.2 0.02 255)', axis: 'oklch(0.6 0.02 250)', grid: 'oklch(0.32 0.02 255)',
+      chip: 'oklch(0.85 0.02 250)'
+    };
+  }
+
+  load = () => {
+    this.setState({ loading: true, error: null, data: null });
+    if (!navigator.geolocation) return this.fetchAll(40.4168, -3.7038, true);
+    navigator.geolocation.getCurrentPosition(
+      p => this.fetchAll(p.coords.latitude, p.coords.longitude, false),
+      () => this.fetchAll(40.4168, -3.7038, true),
+      { timeout: 10000, maximumAge: 300000 }
+    );
+  };
+
+  async fetchAll(lat, lon, fallback) {
+    try {
+      const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+        '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+        '&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day' +
+        '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max' +
+        '&timezone=auto&forecast_days=8';
+      const r = await fetch(u);
+      if (!r.ok) throw new Error('Open-Meteo respondió ' + r.status);
+      const data = await r.json();
+      let place = fallback ? 'Madrid' : 'Ubicación actual', region = fallback ? 'Ubicación por defecto' : '';
+      try {
+        const g = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=es');
+        if (g.ok) {
+          const j = await g.json();
+          place = j.city || j.locality || j.principalSubdivision || place;
+          region = [j.principalSubdivision, j.countryName].filter(Boolean).join(', ') || region;
+        }
+      } catch (e) {}
+      this.setState({ loading: false, data, place, region, lat, lon, fallback });
+    } catch (e) {
+      this.setState({ loading: false, error: e.message || 'Error de red' });
+    }
+  }
+
+  codeInfo(c) {
+    const m = {
+      0: ['Despejado', 'clear'], 1: ['Mayormente despejado', 'pcloud'], 2: ['Parcialmente nublado', 'pcloud'], 3: ['Nublado', 'cloud'],
+      45: ['Niebla', 'fog'], 48: ['Niebla helada', 'fog'],
+      51: ['Llovizna débil', 'drizzle'], 53: ['Llovizna', 'drizzle'], 55: ['Llovizna intensa', 'drizzle'],
+      56: ['Llovizna helada', 'drizzle'], 57: ['Llovizna helada', 'drizzle'],
+      61: ['Lluvia débil', 'rain'], 63: ['Lluvia', 'rain'], 65: ['Lluvia fuerte', 'heavy'],
+      66: ['Lluvia helada', 'rain'], 67: ['Lluvia helada fuerte', 'heavy'],
+      71: ['Nieve débil', 'snow'], 73: ['Nieve', 'snow'], 75: ['Nieve fuerte', 'snow'], 77: ['Granizo fino', 'snow'],
+      80: ['Chubascos', 'shower'], 81: ['Chubascos', 'shower'], 82: ['Chubascos fuertes', 'heavy'],
+      85: ['Chubascos de nieve', 'snow'], 86: ['Chubascos de nieve', 'snow'],
+      95: ['Tormenta', 'storm'], 96: ['Tormenta con granizo', 'storm'], 99: ['Tormenta con granizo', 'storm']
+    };
+    return m[c] || ['—', 'cloud'];
+  }
+
+  svg(size, children, extra) {
+    return React.createElement('svg', Object.assign({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }, extra || {}), children);
+  }
+  memo(key, make) {
+    if (!this._memo || this._memoTheme !== this.theme) { this._memo = {}; this._memoTheme = this.theme; }
+    if (!(key in this._memo)) this._memo[key] = make();
+    return this._memo[key];
+  }
+  wIcon(code, isDay, size) { return this.memo('w|' + code + '|' + isDay + '|' + size, () => this.wIconRaw(code, isDay, size)); }
+  wIconRaw(code, isDay, size) {
+    const kind = this.codeInfo(code)[1], P = this.pal();
+    const SUN = P.sun, MOON = P.moon, CLOUD = P.cloud, RAIN = P.rain, SNOW = P.snow, BOLT = P.bolt;
+    const k = [];
+    const sun = (cx, cy, r, sw) => {
+      const rays = [];
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4, x1 = cx + Math.cos(a) * (r + 2.2), y1 = cy + Math.sin(a) * (r + 2.2), x2 = cx + Math.cos(a) * (r + 4.2), y2 = cy + Math.sin(a) * (r + 4.2);
+        rays.push(React.createElement('line', { key: 'r' + i, x1: x1, y1: y1, x2: x2, y2: y2, stroke: SUN, strokeWidth: sw }));
+      }
+      return [React.createElement('circle', { key: 's', cx: cx, cy: cy, r: r, stroke: SUN, strokeWidth: sw, fill: 'none' })].concat(rays);
+    };
+    const moon = React.createElement('path', { key: 'm', d: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z', stroke: MOON, strokeWidth: 1.6, fill: 'none' });
+    const cloud = (col, sw, d) => React.createElement('path', { key: 'c', d: d || 'M7.5 17.5h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3 3.9 3.9 0 0 0 .6 8.5Z', stroke: col, strokeWidth: sw, fill: 'none' });
+    const drops = (col, ys) => ys.map((y, i) => React.createElement('line', { key: 'd' + i, x1: 9 + i * 3, y1: y[0], x2: 8.2 + i * 3, y2: y[1], stroke: col, strokeWidth: 1.7 }));
+
+    if (kind === 'clear') { if (isDay) k.push.apply(k, sun(12, 12, 4.6, 1.7)); else k.push(moon); }
+    else if (kind === 'pcloud') {
+      if (isDay) k.push.apply(k, sun(8.6, 8.2, 3.1, 1.5)); else k.push(React.createElement('path', { key: 'm', d: 'M14.6 9.4A6.4 6.4 0 0 1 8.8 3.8a5.6 5.6 0 1 0 5.8 5.6Z', stroke: MOON, strokeWidth: 1.5, fill: 'none' }));
+      k.push(React.createElement('path', { key: 'c', d: 'M10 19h7.4a3.2 3.2 0 0 0 .3-6.4 4.8 4.8 0 0 0-9-1.2A3.5 3.5 0 0 0 10 19Z', stroke: CLOUD, strokeWidth: 1.6, fill: 'none' }));
+    }
+    else if (kind === 'cloud') k.push(cloud(CLOUD, 1.7));
+    else if (kind === 'fog') { k.push(cloud(CLOUD, 1.6, 'M7.5 14h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3A3.9 3.9 0 0 0 7.5 14Z')); k.push(React.createElement('line', { key: 'f1', x1: 6, y1: 18, x2: 18, y2: 18, stroke: CLOUD, strokeWidth: 1.6 }), React.createElement('line', { key: 'f2', x1: 8, y1: 21, x2: 16, y2: 21, stroke: CLOUD, strokeWidth: 1.6 })); }
+    else if (kind === 'drizzle') { k.push(cloud(CLOUD, 1.6, 'M7.5 14.5h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3 3.9 3.9 0 0 0 .6 8.5Z')); k.push.apply(k, drops(RAIN, [[17.5, 19], [18.5, 20], [17.5, 19]])); }
+    else if (kind === 'rain' || kind === 'shower') { k.push(cloud(CLOUD, 1.6, 'M7.5 14.5h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3 3.9 3.9 0 0 0 .6 8.5Z')); k.push.apply(k, drops(RAIN, [[17, 20], [17, 21], [17, 20]])); if (kind === 'shower') k.push.apply(k, sun(18.5, 5, 2.1, 1.3)); }
+    else if (kind === 'heavy') { k.push(cloud(CLOUD, 1.7, 'M7.5 14h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3A3.9 3.9 0 0 0 7.5 14Z')); k.push.apply(k, drops(RAIN, [[16, 21], [16, 22], [16, 21]])); }
+    else if (kind === 'snow') { k.push(cloud(CLOUD, 1.6, 'M7.5 14h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3A3.9 3.9 0 0 0 7.5 14Z')); [9, 12, 15].forEach((x, i) => { k.push(React.createElement('line', { key: 'n' + i, x1: x - 1.4, y1: 19 + (i === 1 ? 2 : 0), x2: x + 1.4, y2: 19 + (i === 1 ? 2 : 0), stroke: SNOW, strokeWidth: 1.5 }), React.createElement('line', { key: 'n2' + i, x1: x, y1: 17.6 + (i === 1 ? 2 : 0), x2: x, y2: 20.4 + (i === 1 ? 2 : 0), stroke: SNOW, strokeWidth: 1.5 })); }); }
+    else if (kind === 'storm') { k.push(cloud(CLOUD, 1.6, 'M7.5 14h9.2a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3A3.9 3.9 0 0 0 7.5 14Z')); k.push(React.createElement('path', { key: 'b', d: 'M13.2 15.5h3.1l-4.6 6.8 1.1-4.6h-2.4l3.4-5.2Z', fill: BOLT })); }
+    return this.svg(size, k);
+  }
+  arrow(dir, size, color) {
+    const d = Math.round((dir || 0) / 5) * 5;
+    return this.memo('a|' + d + '|' + size + '|' + (color || ''), () => this.arrowRaw(d, size, color));
+  }
+  arrowRaw(dir, size, color) {
+    const rot = (dir || 0) + 180;
+    return this.svg(size || 13, [
+      React.createElement('g', { key: 'g', transform: 'rotate(' + rot + ' 12 12)' }, [
+        React.createElement('line', { key: 'l', x1: 12, y1: 20, x2: 12, y2: 5, stroke: color || 'currentColor', strokeWidth: 2.4 }),
+        React.createElement('path', { key: 'h', d: 'M7.5 9.5 12 4.6l4.5 4.9', stroke: color || 'currentColor', strokeWidth: 2.4, fill: 'none' })
+      ])
+    ]);
+  }
+  ui(name, size, color) { return this.memo('u|' + name + '|' + size + '|' + (color || ''), () => this.uiRaw(name, size, color)); }
+  uiRaw(name, size, color) {
+    const c = color || 'currentColor', s = size || 15, w = 1.8, P = (d, k) => React.createElement('path', { key: k || 'p', d: d, stroke: c, strokeWidth: w, fill: 'none' });
+    const map = {
+      drop: [P('M12 3.5c3 3.7 5.2 6.3 5.2 9a5.2 5.2 0 0 1-10.4 0c0-2.7 2.2-5.3 5.2-9Z')],
+      wind: [P('M3 9h9.5a2.8 2.8 0 1 0-2.8-2.8', 'a'), P('M3 14.5h13a3 3 0 1 1-3 3', 'b'), P('M3 19.5h6', 'c')],
+      gust: [P('M2 8h10.5a3 3 0 1 0-3-3', 'a'), P('M2 13h7', 'b'), P('M13 13h4.5a3 3 0 1 1-3 3', 'c'), P('M2 18h6', 'd')],
+      humid: [P('M12 3.5c3 3.7 5.2 6.3 5.2 9a5.2 5.2 0 0 1-10.4 0c0-2.7 2.2-5.3 5.2-9Z', 'a'), P('M9.5 13.5h5', 'b')],
+      sunrise: [P('M12 3v4', 'a'), P('M5.6 9.6 8 12', 'b'), P('M18.4 9.6 16 12', 'c'), P('M8 17a4 4 0 0 1 8 0', 'd'), P('M3 21h18', 'e')],
+      sunset: [P('M12 7V3', 'a'), P('M5.6 9.6 8 12', 'b'), P('M18.4 9.6 16 12', 'c'), P('M8 17a4 4 0 0 1 8 0', 'd'), P('M3 21h18', 'e')],
+      moonrise: [P('M17 13a6 6 0 0 1-7.6-7.6A5.4 5.4 0 1 0 17 13Z', 'a'), P('M3 20h18', 'b')],
+      moonset: [P('M17 13a6 6 0 0 1-7.6-7.6A5.4 5.4 0 1 0 17 13Z', 'a'), P('M3 20h18', 'b'), P('M9 16.5 12 19.5 15 16.5', 'c')],
+      bike: [React.createElement('circle', { key: 'c1', cx: 6, cy: 17, r: 3.4, stroke: c, strokeWidth: w, fill: 'none' }), React.createElement('circle', { key: 'c2', cx: 18, cy: 17, r: 3.4, stroke: c, strokeWidth: w, fill: 'none' }), P('M6 17l4.5-7.5H15l3 7.5', 'a'), P('M9 9.5h4.5', 'b')],
+      refresh: [P('M20 12a8 8 0 1 1-3-6.2', 'a'), P('M20 4v4.6h-4.6', 'b')],
+      run: [React.createElement('circle', { key: 'rh', cx: 14.5, cy: 5, r: 2.1, stroke: c, strokeWidth: w, fill: 'none' }), P('M13.5 10.5 10 13l2.5 3 1 5', 'a'), P('M13.5 10.5 17 12l1.5 3.5', 'b'), P('M12.5 16 8.5 21', 'c'), P('M10 13 5.5 12', 'd')],
+      back: [P('M15 5 8 12l7 7')],
+      expand: [P('M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9', 'a'), P('M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15', 'b'), P('M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9', 'c'), P('M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15', 'd')],
+      moonToggle: [P('M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z')],
+      sunToggle: [React.createElement('circle', { key: 'sc', cx: 12, cy: 12, r: 4.2, stroke: c, strokeWidth: w, fill: 'none' })].concat([0, 1, 2, 3, 4, 5, 6, 7].map(i => {
+        const a = i * Math.PI / 4;
+        return React.createElement('line', { key: 'sl' + i, x1: 12 + Math.cos(a) * 6.6, y1: 12 + Math.sin(a) * 6.6, x2: 12 + Math.cos(a) * 8.6, y2: 12 + Math.sin(a) * 8.6, stroke: c, strokeWidth: w });
+      }))
+    };
+    return this.svg(s, map[name] || []);
+  }
+
+  moonAlt(date, lat, lon) {
+    const rad = Math.PI / 180, d = date.valueOf() / 86400000 - 0.5 + 2440588 - 2451545;
+    const e = rad * 23.4397, L = rad * (218.316 + 13.176396 * d), M = rad * (134.963 + 13.064993 * d), F = rad * (93.272 + 13.2293 * d);
+    const l = L + rad * 6.289 * Math.sin(M), b = rad * 5.128 * Math.sin(F);
+    const dec = Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
+    const ra = Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
+    const th = rad * (280.16 + 360.9856235 * d) - rad * -lon, H = th - ra, phi = rad * lat;
+    return Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+  }
+  moonTimes(lat, lon) {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    let rise = null, set = null, prev = this.moonAlt(start, lat, lon);
+    for (let m = 20; m <= 1440; m += 20) {
+      const t = new Date(start.getTime() + m * 60000), a = this.moonAlt(t, lat, lon);
+      if (prev < 0 && a >= 0 && !rise) rise = t;
+      if (prev > 0 && a <= 0 && !set) set = t;
+      prev = a;
+    }
+    const f = t => t ? String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') : '—';
+    return { rise: f(rise), set: f(set) };
+  }
+  moonPhase() {
+    const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14);
+    let p = ((Date.now() - ref) / 86400000 / syn) % 1; if (p < 0) p += 1;
+    const lit = Math.round((1 - Math.cos(p * 2 * Math.PI)) / 2 * 100);
+    const names = ['nueva', 'creciente', 'en cuarto creciente', 'gibosa creciente', 'llena', 'gibosa menguante', 'en cuarto menguante', 'menguante'];
+    return { name: names[Math.round(p * 8) % 8], lit: lit };
+  }
+
+  sp(pts) {
+    if (!pts.length) return '';
+    let d = 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], mx = (a[0] + b[0]) / 2;
+      d += ' C' + mx.toFixed(1) + ',' + a[1].toFixed(1) + ' ' + mx.toFixed(1) + ',' + b[1].toFixed(1) + ' ' + b[0].toFixed(1) + ',' + b[1].toFixed(1);
+    }
+    return d;
+  }
+  axis(labels, W, H, n, top, xf) {
+    const out = [], P = this.pal();
+    const step = n <= 9 ? 1 : 4;
+    labels.forEach((lb, i) => {
+      if (i % step) return;
+      const x = xf ? xf(i) : i * (W / (n - 1));
+      out.push(React.createElement('text', { key: 'x' + i, x: Math.min(Math.max(x, 9), W - 9), y: H - 3, fill: P.axis, fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, lb));
+      out.push(React.createElement('line', { key: 'g' + i, x1: x, y1: top, x2: x, y2: H - 15, stroke: P.grid, strokeWidth: 1, strokeDasharray: '2 4' }));
+    });
+    return out;
+  }
+  tempChart(hs) {
+    const W = 352, H = 142, top = 30, bot = 20, n = hs.length, P = this.pal();
+    const vals = hs.map(h => h.t), app = hs.map(h => h.a);
+    const lo = Math.min.apply(null, vals.concat(app)) - 1.5, hi = Math.max.apply(null, vals.concat(app)) + 1.5;
+    const x = i => i * (W / (n - 1)), y = v => top + (H - top - bot) * (1 - (v - lo) / (hi - lo || 1));
+    const p = vals.map((v, i) => [x(i), y(v)]), pa = app.map((v, i) => [x(i), y(v)]);
+    const line = this.sp(p), area = line + ' L' + W + ',' + (H - bot) + ' L0,' + (H - bot) + ' Z';
+    const marks = [];
+    vals.forEach((v, i) => {
+      const up = i > 0 && i < n - 1 ? (vals[i] >= vals[i - 1] ? -9 : 15) : -9;
+      marks.push(React.createElement('circle', { key: 'ca' + i, cx: x(i), cy: y(app[i]), r: 2, fill: P.warmSoft }));
+      marks.push(React.createElement('circle', { key: 'c' + i, cx: x(i), cy: y(v), r: n <= 9 ? 3.4 : 2.4, fill: P.dot, stroke: P.warmLine, strokeWidth: 2 }));
+      if (n <= 9 || i % 3 === 0) marks.push(React.createElement('text', { key: 't' + i, x: Math.min(Math.max(x(i), 13), W - 13), y: y(v) + up, fill: P.warmText, fontSize: n <= 9 ? 11 : 9.5, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, n <= 9 ? v.toFixed(1) + '°' : Math.round(v) + '°'));
+    });
+    const kids = this.axis(hs.map(h => h.hour), W, H, n, top - 12)
+      .concat([React.createElement('path', { key: 'ar', d: area, fill: P.warmLine, opacity: this.light ? 0.1 : 0.14 }),
+        React.createElement('path', { key: 'ap', d: this.sp(pa), stroke: P.warmSoft, strokeWidth: 1.6, strokeDasharray: '4 4', fill: 'none' }),
+        React.createElement('path', { key: 'ln', d: line, stroke: P.warmLine, strokeWidth: 2.6, fill: 'none' })])
+      .concat(marks);
+    return React.createElement('svg', { width: '100%', height: H, viewBox: '0 0 ' + W + ' ' + H, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }, kids);
+  }
+  windChart(hs) {
+    const W = 352, H = 158, top = 50, bot = 20, n = hs.length, P = this.pal();
+    const sp = hs.map(h => h.w), gu = hs.map(h => h.g);
+    const hi = Math.max(Math.max.apply(null, gu) * 1.2, 10), lo = 0;
+    const x = i => i * (W / (n - 1)), y = v => top + (H - top - bot) * (1 - (v - lo) / (hi - lo));
+    const gl = this.sp(gu.map((v, i) => [x(i), y(v)]));
+    const sl = this.sp(sp.map((v, i) => [x(i), y(v)]));
+    const arrows = [], DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], dense = n <= 9, st = dense ? 1 : 3;
+    for (let i = 0; i < n; i++) {
+      const cx = Math.min(Math.max(x(i), 13), W - 13);
+      if (i % st === 0) {
+        arrows.push(React.createElement('g', { key: 'a' + i, transform: 'translate(' + (cx - 8) + ',-1)' }, this.arrow(hs[i].d, 16, P.tealLine)));
+        arrows.push(React.createElement('text', { key: 'ad' + i, x: cx, y: 24, fill: P.axis, fontSize: 9, fontWeight: 600, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, DIRS[Math.round((hs[i].d % 360) / 45) % 8]));
+        arrows.push(React.createElement('text', { key: 'sv' + i, x: cx, y: y(hs[i].w) - 8, fill: P.tealText, fontSize: dense ? 10.5 : 9.5, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, Math.round(hs[i].w)));
+        if (dense) arrows.push(React.createElement('text', { key: 'gv' + i, x: cx, y: y(hs[i].g) - 6, fill: P.tealSoft, fontSize: 9, fontWeight: 600, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, Math.round(hs[i].g)));
+      }
+      arrows.push(React.createElement('circle', { key: 'ds' + i, cx: x(i), cy: y(hs[i].w), r: dense ? 3.2 : 2.2, fill: P.dot, stroke: P.tealLine, strokeWidth: 2 }));
+    }
+    const kids = this.axis(hs.map(h => h.hour), W, H, n, top - 10)
+      .concat([
+        React.createElement('path', { key: 'ga', d: gl + ' L' + W + ',' + (H - bot) + ' L0,' + (H - bot) + ' Z', fill: P.tealLine, opacity: 0.09 }),
+        React.createElement('path', { key: 'gl', d: gl, stroke: P.tealSoft, strokeWidth: 1.6, strokeDasharray: '4 4', fill: 'none' }),
+        React.createElement('path', { key: 'sa', d: sl + ' L' + W + ',' + (H - bot) + ' L0,' + (H - bot) + ' Z', fill: P.tealLine, opacity: this.light ? 0.11 : 0.16 }),
+        React.createElement('path', { key: 'sl', d: sl, stroke: P.tealLine, strokeWidth: 2.6, fill: 'none' })
+      ]).concat(arrows);
+    return React.createElement('svg', { width: '100%', height: H, viewBox: '0 0 ' + W + ' ' + H, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }, kids);
+  }
+  rainChart(hs) {
+    const W = 352, H = 134, top = 26, bot = 20, n = hs.length, P = this.pal();
+    const mm = hs.map(h => h.p), pr = hs.map(h => h.pr);
+    const mmax = Math.max(Math.max.apply(null, mm), 1);
+    const bw = Math.max(W / n - 16, 6);
+    const cxOf = i => i * (W / n) + (W / n) / 2;
+    const bars = [];
+    mm.forEach((v, i) => {
+      const h = v <= 0 ? 0 : Math.max((H - top - bot) * (v / mmax), 3);
+      bars.push(React.createElement('rect', { key: 'b' + i, x: cxOf(i) - bw / 2, y: H - bot - h, width: bw, height: h, rx: 3, fill: P.rainBar, opacity: 0.8 }));
+      if (v > 0 && n <= 9) bars.push(React.createElement('text', { key: 'bt' + i, x: cxOf(i), y: H - bot - h - 4, fill: P.probText, fontSize: 9, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, v.toFixed(1)));
+    });
+    const y = v => top + (H - top - bot) * (1 - v / 100);
+    const pl = this.sp(pr.map((v, i) => [cxOf(i), y(v)]));
+    const dots = [];
+    pr.forEach((v, i) => {
+      dots.push(React.createElement('circle', { key: 'pd' + i, cx: cxOf(i), cy: y(v), r: n <= 9 ? 3 : 2.2, fill: P.dot, stroke: P.probLine, strokeWidth: 2 }));
+      if (n <= 9 || i % 3 === 0) dots.push(React.createElement('text', { key: 'pt' + i, x: cxOf(i), y: y(v) - 8, fill: P.probText, fontSize: n <= 9 ? 10 : 9, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, v + '%'));
+    });
+    const kids = this.axis(hs.map(h => h.hour), W, H, n, top - 12, cxOf)
+      .concat(bars)
+      .concat([React.createElement('path', { key: 'pl', d: pl, stroke: P.probLine, strokeWidth: 2.2, fill: 'none' })])
+      .concat(dots);
+    return React.createElement('svg', { width: '100%', height: H, viewBox: '0 0 ' + W + ' ' + H, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }, kids);
+  }
+
+  scoreChart(hs) {
+    const W = 352, H = 118, top = 22, bot = 20, n = hs.length, P = this.pal();
+    const bw = Math.max(W / n - (n <= 9 ? 16 : 6), 4);
+    const cxOf = i => i * (W / n) + (W / n) / 2;
+    const bars = [];
+    hs.forEach((o, i) => {
+      const st = this.scoreStyle(o.s), h = Math.max((H - top - bot) * (o.s / 10), 3);
+      bars.push(React.createElement('rect', { key: 'b' + i, x: cxOf(i) - bw / 2, y: H - bot - h, width: bw, height: h, rx: 3, fill: 'oklch(0.7 0.15 ' + this.scoreHue(o.s) + ')', opacity: this.light ? 0.9 : 0.85 }));
+      if (n <= 9 || i % 3 === 0) bars.push(React.createElement('text', { key: 't' + i, x: cxOf(i), y: H - bot - h - 5, fill: st.color, fontSize: n <= 9 ? 11 : 9, fontWeight: 800, fontFamily: 'IBM Plex Mono, monospace', textAnchor: 'middle' }, o.s));
+    });
+    const kids = this.axis(hs.map(o => o.hour), W, H, n, top - 8, cxOf).concat(bars);
+    return React.createElement('svg', { width: '100%', height: H, viewBox: '0 0 ' + W + ' ' + H, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }, kids);
+  }
+
+  uvScale(uv) {
+    let label, h, c;
+    if (uv <= 2) { label = 'Bajo'; h = 145; c = 0.14; }
+    else if (uv <= 5) { label = 'Moderado'; h = 95; c = 0.15; }
+    else if (uv <= 7) { label = 'Alto'; h = 60; c = 0.16; }
+    else if (uv <= 10) { label = 'Muy alto'; h = 30; c = 0.17; }
+    else { label = 'Extremo'; h = 340; c = 0.15; }
+    if (this.light) return {
+      label: label, color: 'oklch(0.5 ' + c + ' ' + h + ')',
+      bg: 'oklch(0.75 ' + c + ' ' + h + ' / 0.16)', border: 'oklch(0.7 ' + c + ' ' + h + ' / 0.5)'
+    };
+    return {
+      label: label, color: 'oklch(0.82 ' + c + ' ' + h + ')',
+      bg: 'oklch(0.42 ' + c + ' ' + h + ' / 0.2)', border: 'oklch(0.6 ' + c + ' ' + h + ' / 0.45)'
+    };
+  }
+
+  activity(kind, t, wind, gust, prob, mm, code, hum) {
+    const bike = kind === 'bike';
+    let s = 100;
+    const notes = [];
+    if (bike) {
+      if (t < 5) s -= 45; else if (t < 10) s -= 20; else if (t > 33) s -= 40; else if (t > 28) s -= 15;
+      if (gust > 55) s -= 45; else if (gust > 40) s -= 28; else if (gust > 28) s -= 14;
+      if (gust > 28) notes.push('rachas de ' + Math.round(gust) + ' km/h'); else if (wind < 12) notes.push('viento flojo');
+    } else {
+      if (t < 2) s -= 35; else if (t < 6) s -= 15; else if (t > 30) s -= 45; else if (t > 25) s -= 25; else if (t > 21) s -= 10;
+      if (gust > 55) s -= 20; else if (gust > 40) s -= 10;
+      if (t > 24 && hum > 70) { s -= 15; notes.push('bochorno, ritmo suave'); }
+      else if (wind < 15) notes.push('viento poco molesto');
+    }
+    if (prob >= 70) s -= 45; else if (prob >= 40) s -= 25; else if (prob >= 20) s -= 10;
+    if (mm > 1) s -= 20;
+    if (code >= 95) s -= 50;
+    if (prob >= 30) notes.push(prob + '% de lluvia'); else notes.push('sin lluvia prevista');
+    if (t < (bike ? 8 : 4)) notes.push('frío, abriga bien'); else if (t > (bike ? 30 : 26)) notes.push('calor, lleva agua');
+    const note = notes.slice(0, 2).join(' · ');
+    const score = Math.max(1, Math.min(10, Math.round(s / 10)));
+    if (s >= 75) return { label: 'Buenas condiciones', note: note, hue: 145, score: score };
+    if (s >= 50) return { label: 'Aceptable, con cuidado', note: note, hue: 85, score: score };
+    return { label: 'Mejor otro día', note: note, hue: 30, score: score };
+  }
+
+  scoreHue(n) { return n >= 8 ? 145 : n >= 6 ? 105 : n >= 4 ? 65 : 25; }
+  scoreStyle(n) {
+    const h = this.scoreHue(n), L = this.light;
+    return {
+      color: L ? 'oklch(0.42 0.15 ' + h + ')' : 'oklch(0.88 0.16 ' + h + ')',
+      bg: L ? 'oklch(0.93 0.07 ' + h + ')' : 'oklch(0.35 0.09 ' + h + ' / 0.75)',
+      border: L ? 'oklch(0.84 0.1 ' + h + ')' : 'oklch(0.55 0.12 ' + h + ' / 0.55)'
+    };
+  }
+  hourScore(kind, H, i, cv) {
+    return this.activity(kind, H.temperature_2m[i], cv(H.wind_speed_10m[i]), H.wind_gusts_10m[i],
+      H.precipitation_probability[i] || 0, H.precipitation[i] || 0, H.weather_code[i],
+      (H.relative_humidity_2m && H.relative_humidity_2m[i]) || 60).score;
+  }
+
+  renderVals() {
+    const st = this.state, d = st.data, L = this.light, P = this.pal();
+    const base = {
+      loading: st.loading, error: st.error, ready: !!d, reload: this.load, toggleTheme: this.toggleTheme,
+      viewMain: !!d && st.view !== 'hours', viewHours: !!d && st.view === 'hours',
+      openHours: this.openHours, backToMain: this.backToMain,
+      backIcon: this.ui('back', 16), expandIcon: this.ui('expand', 14),
+      themeIcon: this.ui(L ? 'moonToggle' : 'sunToggle', 18),
+      refreshIcon: React.createElement('div', { style: { display: 'flex', color: P.chip, animation: st.loading ? 'spin 1s linear infinite' : 'none' } }, this.ui('refresh', 18)),
+      place: st.place || '—', region: st.region || '', updated: '—'
+    };
+    if (!d) return base;
+
+    const H = d.hourly, C = d.current, D = d.daily, unit = this.props.windUnit || 'km/h';
+    const cv = v => unit === 'm/s' ? v / 3.6 : v;
+    const uLbl = unit === 'm/s' ? 'm/s' : 'km/h';
+    const nowKey = C.time.slice(0, 13);
+    let i0 = H.time.findIndex(t => t.slice(0, 13) === nowKey); if (i0 < 0) i0 = 0;
+    const nH = Math.min(this.props.hoursAhead || 5, H.time.length - i0 - 1);
+    const idx = []; for (let i = i0; i < i0 + nH; i++) idx.push(i);
+
+    const info = this.codeInfo(C.weather_code);
+    const isDay = C.is_day === 1;
+    const probNow = H.precipitation_probability[i0] || 0;
+    const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+    const probCol = pr => pr >= 50 ? (L ? 'oklch(0.5 0.15 245)' : 'oklch(0.78 0.14 245)') : pr >= 20 ? (L ? 'oklch(0.58 0.09 245)' : 'oklch(0.75 0.08 245)') : 'var(--muted2)';
+
+    const sport = st.sport || 'bike';
+    const sc = i => { const n = this.hourScore(sport, H, i, cv), s = this.scoreStyle(n); return { n: n, s: s }; };
+    const hours = idx.map(i => {
+      const pr = H.precipitation_probability[i] || 0;
+      const mmv = H.precipitation[i] || 0;
+      const cur = i === i0;
+      const q = sc(i);
+      return {
+        score: q.n, scoreColor: q.s.color, scoreBg: q.s.bg, scoreBorder: q.s.border,
+        sportIcon: this.ui(sport === 'bike' ? 'bike' : 'run', 11, q.s.color),
+        hour: cur ? 'Ahora' : H.time[i].slice(11, 16),
+        icon: this.wIcon(H.weather_code[i], H.is_day[i] === 1, 24),
+        temp: Math.round(H.temperature_2m[i]),
+        feels: Math.round(H.apparent_temperature[i]),
+        prob: pr, probColor: probCol(pr),
+        mm: mmv > 0 ? mmv.toFixed(1) + 'mm' : '—',
+        mmColor: mmv > 0 ? (L ? 'oklch(0.52 0.12 250)' : 'oklch(0.72 0.11 250)') : 'var(--muted3)',
+        arrow: this.arrow(H.wind_direction_10m[i], 12),
+        dir: DIRS[Math.round((H.wind_direction_10m[i] % 360) / 45) % 8],
+        wind: Math.round(cv(H.wind_speed_10m[i])) + ' ' + uLbl,
+        gust: Math.round(cv(H.wind_gusts_10m[i])) + ' ' + uLbl,
+        bg: cur ? 'var(--now-bg)' : 'var(--surface)',
+        border: cur ? 'var(--now-border)' : 'var(--border)'
+      };
+    });
+
+    const chartHours = idx.map(i => ({
+      hour: H.time[i].slice(11, 13) + 'h', s: this.hourScore(sport, H, i, cv), t: H.temperature_2m[i], a: H.apparent_temperature[i],
+      w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
+      p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0
+    }));
+
+    const dayNames = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const allMin = Math.min.apply(null, D.temperature_2m_min.slice(0, 7)), allMax = Math.max.apply(null, D.temperature_2m_max.slice(0, 7));
+    const span = (allMax - allMin) || 1;
+    const days = D.time.slice(0, 7).map((t, i) => {
+      const dt = new Date(t + 'T12:00:00'), mm = D.precipitation_sum[i] || 0, pp = D.precipitation_probability_max[i] || 0;
+      return {
+        name: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : dayNames[dt.getDay()],
+        date: dt.getDate() + '/' + (dt.getMonth() + 1),
+        icon: this.wIcon(D.weather_code[i], true, 26),
+        min: Math.round(D.temperature_2m_min[i]), max: Math.round(D.temperature_2m_max[i]),
+        barLeft: ((D.temperature_2m_min[i] - allMin) / span * 100).toFixed(1) + '%',
+        barWidth: (Math.max(D.temperature_2m_max[i] - D.temperature_2m_min[i], 1) / span * 100).toFixed(1) + '%',
+        rain: pp + '% · ' + mm.toFixed(1) + 'mm',
+        rainIcon: this.ui('drop', 12, pp >= 40 ? P.rain : 'var(--muted2)'),
+        rainColor: pp >= 40 ? P.rain : 'var(--muted2)',
+        arrow: this.arrow(D.wind_direction_10m_dominant[i], 11),
+        wind: Math.round(cv(D.wind_speed_10m_max[i])) + '/' + Math.round(cv(D.wind_gusts_10m_max[i])) + ' ' + uLbl,
+        sep: i === 0 ? 'transparent' : 'var(--border)'
+      };
+    });
+
+    const uv = Math.round(D.uv_index_max[0] || 0);
+    const uvS = this.uvScale(uv);
+    const sport0 = st.sport || 'bike';
+    const bestFor = kind => {
+      let b = null, any = null;
+      const lim = Math.min(i0 + 36, H.time.length - 1);
+      for (let i = i0; i < lim; i++) {
+        const v = (this.hourScore(kind, H, i, cv) + this.hourScore(kind, H, i + 1, cv)) / 2;
+        if (!any || v > any.v) any = { v: v, i: i };
+        if (H.is_day[i] !== 1 || H.is_day[i + 1] !== 1) continue;
+        if (!b || v > b.v) b = { v: v, i: i };
+      }
+      b = b || any;
+      if (!b) return { text: '—', day: '', score: '—', style: this.scoreStyle(5) };
+      const end = H.time[b.i + 2] || H.time[b.i + 1];
+      const dstr = H.time[b.i].slice(0, 10);
+      return {
+        text: H.time[b.i].slice(11, 16) + '–' + end.slice(11, 16),
+        day: dstr === D.time[0] ? 'hoy' : dstr === D.time[1] ? 'mañana' : dayNames[new Date(dstr + 'T12:00:00').getDay()],
+        score: Math.round(b.v), style: this.scoreStyle(Math.round(b.v))
+      };
+    };
+    const mkAct = (kind, name, iconName) => {
+      const a = this.activity(kind, C.temperature_2m, cv(C.wind_speed_10m), C.wind_gusts_10m, probNow, C.precipitation || 0, C.weather_code, C.relative_humidity_2m);
+      const ss = this.scoreStyle(a.score), on = sport0 === kind, bw = bestFor(kind);
+      return {
+        name: name, label: a.label, note: a.note,
+        pick: this.pickSport(kind), on: on,
+        ring: on ? '0 0 0 2px var(--now-border)' : 'none',
+        tag: on ? 'puntuando horas' : 'ver por horas',
+        tagColor: on ? 'var(--text-soft)' : 'var(--muted3)',
+        bestText: bw.text, bestDay: bw.day, bestScore: bw.score,
+        bestColor: bw.style.color, bestBg: bw.style.bg, bestBorder: bw.style.border,
+        score: a.score, scoreColor: ss.color, scoreBg: ss.bg, scoreBorder: ss.border,
+        bg: L ? 'oklch(0.96 0.04 ' + a.hue + ')' : 'oklch(0.26 0.045 ' + a.hue + ' / 0.55)',
+        border: L ? 'oklch(0.87 0.08 ' + a.hue + ')' : 'oklch(0.5 0.1 ' + a.hue + ' / 0.5)',
+        dot: L ? 'oklch(0.68 0.14 ' + a.hue + ')' : 'oklch(0.42 0.1 ' + a.hue + ')',
+        text: L ? 'oklch(0.45 0.14 ' + a.hue + ')' : 'oklch(0.85 0.15 ' + a.hue + ')',
+        icon: this.ui(iconName, 19, L ? 'oklch(0.99 0.01 ' + a.hue + ')' : 'oklch(0.95 0.03 ' + a.hue + ')')
+      };
+    };
+    const acts = [mkAct('bike', 'Bici', 'bike'), mkAct('run', 'Correr', 'run')];
+
+    const sportChips = [{ k: 'bike', label: 'Bici', ic: 'bike' }, { k: 'run', label: 'Correr', ic: 'run' }].map(o => ({
+      k: o.k,
+      label: o.label, pick: this.pickSport(o.k),
+      icon: this.ui(o.ic, 14, sport === o.k ? 'var(--text)' : 'var(--muted)'),
+      bg: sport === o.k ? 'var(--now-bg)' : 'transparent',
+      border: sport === o.k ? 'var(--now-border)' : 'var(--border)',
+      color: sport === o.k ? 'var(--text)' : 'var(--muted)'
+    }));
+    const act = acts.filter(a => a.on)[0] || acts[0];
+
+
+
+    const dayIdx = Math.min(st.dayIdx, D.time.length - 1);
+    const dayTabs = D.time.slice(0, 5).map((t, i) => {
+      const dt = new Date(t + 'T12:00:00'), on = i === dayIdx;
+      const pp = D.precipitation_probability_max[i] || 0, mmd = D.precipitation_sum[i] || 0;
+      return {
+        label: i === 0 ? 'Hoy' : i === 1 ? 'Mañ.' : dayNames[dt.getDay()],
+        date: dt.getDate() + '/' + (dt.getMonth() + 1),
+        icon: this.wIcon(D.weather_code[i], true, 24),
+        max: Math.round(D.temperature_2m_max[i]) + '°',
+        min: Math.round(D.temperature_2m_min[i]) + '°',
+        prob: pp + '%', probColor: probCol(pp),
+        mm: mmd > 0 ? mmd.toFixed(1) + 'mm' : '—',
+        mmColor: mmd > 0 ? (L ? 'oklch(0.52 0.12 250)' : 'oklch(0.72 0.11 250)') : 'var(--muted3)',
+        arrow: this.arrow(D.wind_direction_10m_dominant[i], 11),
+        wind: Math.round(cv(D.wind_speed_10m_max[i])),
+        gust: Math.round(cv(D.wind_gusts_10m_max[i])),
+        pick: this.pickDay(i),
+        bg: on ? 'var(--now-bg)' : 'var(--surface)',
+        border: on ? 'var(--now-border)' : 'var(--border)',
+        color: on ? 'var(--text)' : 'var(--muted)'
+      };
+    });
+    const dStr = D.time[dayIdx];
+    const dayIdxs = [];
+    H.time.forEach((t, i) => { if (t.slice(0, 10) === dStr && (dayIdx > 0 || i >= i0)) dayIdxs.push(i); });
+    const startIdx = dayIdxs.length ? dayIdxs[0] : i0;
+    const total = H.time.length - startIdx;
+    const limit = Math.min(st.hourLimit || 48, total);
+    const allIdxs = []; for (let i = startIdx; i < startIdx + limit; i++) allIdxs.push(i);
+    let lastDate = '';
+    const hourRows = allIdxs.map(i => {
+      const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0;
+      const q = sc(i);
+      const dstr = H.time[i].slice(0, 10);
+      let head = '';
+      if (dstr !== lastDate) {
+        const dt = new Date(dstr + 'T12:00:00');
+        head = (dstr === D.time[0] ? 'Hoy' : dstr === D.time[1] ? 'Mañana' : dayNames[dt.getDay()]) + ' ' + dt.getDate() + '/' + (dt.getMonth() + 1);
+        lastDate = dstr;
+      }
+      return {
+        head: head,
+        score: q.n, scoreColor: q.s.color, scoreBg: q.s.bg, scoreBorder: q.s.border,
+        sportIcon: this.ui(sport === 'bike' ? 'bike' : 'run', 11, q.s.color),
+        hour: H.time[i].slice(11, 16), now: cur ? 'ahora' : '',
+        icon: this.wIcon(H.weather_code[i], H.is_day[i] === 1, 26),
+        cond: this.codeInfo(H.weather_code[i])[0],
+        temp: Math.round(H.temperature_2m[i]), feels: Math.round(H.apparent_temperature[i]),
+        prob: pr + '%', probColor: probCol(pr),
+        mm: mmv > 0 ? mmv.toFixed(1) + ' mm' : '—',
+        mmColor: mmv > 0 ? (L ? 'oklch(0.52 0.12 250)' : 'oklch(0.72 0.11 250)') : 'var(--muted3)',
+        arrow: this.arrow(H.wind_direction_10m[i], 12),
+        dir: DIRS[Math.round((H.wind_direction_10m[i] % 360) / 45) % 8],
+        wind: Math.round(cv(H.wind_speed_10m[i])),
+        gust: Math.round(cv(H.wind_gusts_10m[i])),
+        bg: cur ? 'var(--now-bg)' : 'transparent',
+        sep: 'var(--border)'
+      };
+    });
+    const dayChartHours = dayIdxs.map(i => ({
+      hour: H.time[i].slice(11, 13) + 'h', s: this.hourScore(sport, H, i, cv), t: H.temperature_2m[i], a: H.apparent_temperature[i],
+      w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
+      p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0
+    }));
+    const dayLabel = (dayTabs[dayIdx] ? 'desde ' + dayTabs[dayIdx].label + ' ' + dayTabs[dayIdx].date : '') + ' · ' + hourRows.length + ' h';
+
+    const mt = this.moonTimes(st.lat, st.lon), mp = this.moonPhase();
+
+    return Object.assign(base, {
+      updated: C.time.slice(11, 16),
+      temp: Math.round(C.temperature_2m), feels: Math.round(C.apparent_temperature),
+      condition: info[0], bigIcon: this.wIcon(C.weather_code, isDay, 92),
+      tmaxLabel: 'Máx ' + Math.round(D.temperature_2m_max[0]) + '°',
+      tminLabel: 'Mín ' + Math.round(D.temperature_2m_min[0]) + '°',
+      uv: uv, uvLabel: uvS.label, uvColor: uvS.color, uvBg: uvS.bg, uvBorder: uvS.border,
+      showIndex: this.props.showCyclingIndex !== false,
+      acts: acts, act: act, sportChips: sportChips,
+      sportLabel: sport === 'bike' ? 'bici' : 'correr',
+      dayTabs: dayTabs, hourRows: hourRows, dayLabel: dayLabel,
+      hasMore: limit < total, loadMore: this.loadMore,
+      moreLabel: 'Cargar ' + Math.min(48, total - limit) + ' h más · quedan ' + (total - limit),
+      dayCharts: [
+        { title: 'Conveniencia ' + (sport === 'bike' ? 'bici' : 'correr'), legend: [{ label: 'nota 1-10', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: this.scoreChart(dayChartHours) },
+        { title: 'Temperatura', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: this.tempChart(dayChartHours) },
+        { title: 'Viento y dirección', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: this.windChart(dayChartHours) },
+        { title: 'Lluvia', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: this.rainChart(dayChartHours) }
+      ],
+      tiles: [
+        { label: 'Humedad', value: C.relative_humidity_2m, unit: '%', sub: C.relative_humidity_2m > 85 ? 'ambiente muy húmedo' : 'confortable', icon: this.ui('humid', 15), color: L ? 'oklch(0.52 0.11 195)' : 'oklch(0.78 0.11 195)', subIcon: null },
+        { label: 'Prob. lluvia', value: probNow, unit: '%', sub: (C.precipitation || 0).toFixed(1) + ' mm ahora', icon: this.ui('drop', 15), color: L ? 'oklch(0.52 0.14 250)' : 'oklch(0.76 0.14 250)', subIcon: null },
+        { label: 'Viento', value: Math.round(cv(C.wind_speed_10m)), unit: uLbl, sub: 'del ' + DIRS[Math.round((C.wind_direction_10m % 360) / 45) % 8] + ' (' + Math.round(C.wind_direction_10m) + '°)', icon: this.ui('wind', 15), color: L ? 'oklch(0.5 0.12 175)' : 'oklch(0.8 0.13 175)', subIcon: this.arrow(C.wind_direction_10m, 12) },
+        { label: 'Rachas', value: Math.round(cv(C.wind_gusts_10m)), unit: uLbl, sub: C.wind_gusts_10m > 40 ? 'atención en bici' : 'sin sobresaltos', icon: this.ui('gust', 15), color: L ? 'oklch(0.5 0.13 140)' : 'oklch(0.8 0.14 140)', subIcon: null }
+      ],
+      astro: [
+        { label: 'Amanece', value: D.sunrise[0].slice(11, 16), icon: this.ui('sunrise', 18), color: L ? 'oklch(0.62 0.15 65)' : 'oklch(0.83 0.15 75)' },
+        { label: 'Atardece', value: D.sunset[0].slice(11, 16), icon: this.ui('sunset', 18), color: L ? 'oklch(0.58 0.15 35)' : 'oklch(0.78 0.15 40)' },
+        { label: 'Sale la luna', value: mt.rise, icon: this.ui('moonrise', 18), color: L ? 'oklch(0.55 0.06 265)' : 'oklch(0.85 0.05 260)' },
+        { label: 'Se pone', value: mt.set, icon: this.ui('moonset', 18), color: L ? 'oklch(0.62 0.04 265)' : 'oklch(0.75 0.04 260)' }
+      ],
+      moonPhase: mp.name, moonLit: mp.lit,
+      hours: hours,
+      charts: [
+        { title: 'Conveniencia ' + (sport === 'bike' ? 'bici' : 'correr') + ' · ' + nH + ' h', legend: [{ label: 'nota 1-10', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: this.scoreChart(chartHours) },
+        { title: 'Temperatura · ' + nH + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: this.tempChart(chartHours) },
+        { title: 'Viento y dirección · ' + nH + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: this.windChart(chartHours) },
+        { title: 'Lluvia · ' + nH + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: this.rainChart(chartHours) }
+      ],
+      days: days,
+      coords: (st.fallback ? 'ubicación por defecto · ' : '') + st.lat.toFixed(3) + ', ' + st.lon.toFixed(3)
+    });
+  }
+}
+</script>
+</body>
+</html>
