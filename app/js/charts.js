@@ -128,3 +128,29 @@ function scoreChart(hs, P, scoreStyle, scoreHue, light) {
   const inner = axisSvg(hs.map(o => o.hour), W, H, n, top - 8, cxOf, P) + bars;
   return svgChart(W, H, inner);
 }
+
+function skyArc(kind, riseMin, setMin, nowMin, showDot, P) {
+  const W = 300, H = 78, leftX = 26, rightX = W - 26, groundY = 50;
+  const rx = (rightX - leftX) / 2, ry = 34, cx = (leftX + rightX) / 2;
+  const arcD = `M${leftX},${groundY} A${rx},${ry} 0 0 1 ${rightX},${groundY}`;
+  let dot = '';
+  if (showDot) {
+    const frac = Math.max(0, Math.min(1, (nowMin - riseMin) / (setMin - riseMin)));
+    const angle = Math.PI * (1 - frac);
+    const dx = cx + rx * Math.cos(angle), dy = groundY - ry * Math.sin(angle);
+    const glyphColor = kind === 'sun' ? P.sun : P.moon;
+    const moonScale = 1.3;
+    const moonTx = dx - moonScale * 14.75, moonTy = dy - moonScale * 9.25;
+    const glyph = kind === 'sun'
+      ? sunRays(dx, dy, 4.6, 1.7, glyphColor)
+      : `<g transform="translate(${moonTx.toFixed(1)},${moonTy.toFixed(1)}) scale(${moonScale})"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z" fill="${glyphColor}" stroke="${glyphColor}" stroke-width="1"/></g>`;
+    dot = `<line x1="${dx.toFixed(1)}" y1="${dy.toFixed(1)}" x2="${dx.toFixed(1)}" y2="${groundY}" stroke="${P.grid}" stroke-width="1" stroke-dasharray="2 3"/>` + glyph;
+  }
+  const inner = `
+    <line x1="${leftX - 8}" y1="${groundY}" x2="${rightX + 8}" y2="${groundY}" stroke="${P.grid}" stroke-width="1" stroke-dasharray="2 4"/>
+    <path d="${arcD}" stroke="${P.axis}" stroke-width="1.4" fill="none" stroke-dasharray="3 4" opacity="0.6"/>
+    <circle cx="${leftX}" cy="${groundY}" r="2.6" fill="${P.axis}"/>
+    <circle cx="${rightX}" cy="${groundY}" r="2.6" fill="${P.axis}"/>
+    ${dot}`;
+  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" fill="none" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+}

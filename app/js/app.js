@@ -11,7 +11,7 @@
   const state = {
     loading: true, error: null, data: null,
     place: null, region: null, lat: null, lon: null, fallback: false,
-    theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48,
+    theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48, dayLimit: 7,
     favorites: loadFavorites(),
     locationQuery: '', locationResultsRaw: [], locationResults: [], locSearching: false, locFavMsg: '', locSpainOnly: true,
     gpsPlace: null, gpsRegion: null, gpsFallback: false
@@ -73,7 +73,7 @@
         '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
         '&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day' +
         '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max' +
-        '&timezone=auto&forecast_days=8';
+        '&timezone=auto&forecast_days=14';
       const r = await fetch(u);
       if (!r.ok) throw new Error('Open-Meteo respondió ' + r.status);
       const data = await r.json();
@@ -89,7 +89,7 @@
           }
         } catch (e) { /* geocoding is best-effort */ }
       }
-      Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, dayIdx: 0, hourLimit: 48 });
+      Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, dayIdx: 0, hourLimit: 48, dayLimit: 7 });
       if (!known) Object.assign(state, { gpsPlace: place, gpsRegion: region, gpsFallback: fallback });
       render();
     } catch (e) {
@@ -202,6 +202,7 @@
   function backToMain() { state.view = 'main'; render(); window.scrollTo(0, 0); }
   function pickDay(i) { state.dayIdx = i; state.hourLimit = 48; render(); }
   function loadMore() { state.hourLimit = (state.hourLimit || 48) + 48; render(); }
+  function loadMoreDays() { state.dayLimit = (state.dayLimit || 7) + 7; render(); }
   function pickSport(k) { state.sport = k; render(); }
 
   /* ---------- derived data ---------- */
@@ -242,9 +243,12 @@
       p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0
     }));
 
-    const allMin = Math.min(...D.temperature_2m_min.slice(0, 7)), allMax = Math.max(...D.temperature_2m_max.slice(0, 7));
+    const daysToShow = Math.min(st.dayLimit || 7, D.time.length);
+    const hasMoreDays = daysToShow < D.time.length;
+    const moreDaysLabel = 'Ver ' + Math.min(7, D.time.length - daysToShow) + ' días más · quedan ' + (D.time.length - daysToShow);
+    const allMin = Math.min(...D.temperature_2m_min.slice(0, daysToShow)), allMax = Math.max(...D.temperature_2m_max.slice(0, daysToShow));
     const span = (allMax - allMin) || 1;
-    const days = D.time.slice(0, 7).map((t, i) => {
+    const days = D.time.slice(0, daysToShow).map((t, i) => {
       const dt = new Date(t + 'T12:00:00'), mm = D.precipitation_sum[i] || 0, pp = D.precipitation_probability_max[i] || 0;
       return {
         name: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : dayNames[dt.getDay()],
@@ -365,6 +369,20 @@
     const mt = moonTimes(st.lat, st.lon), mp = moonPhase();
     const sportLabel = sport === 'bike' ? 'bici' : 'correr';
 
+    const toMin = s => { const [hh, mm] = s.split(':').map(Number); return hh * 60 + mm; };
+    const nowMin = toMin(C.time.slice(11, 16));
+    const sunriseStr = D.sunrise[0].slice(11, 16), sunsetStr = D.sunset[0].slice(11, 16);
+    const sunriseMin = toMin(sunriseStr), sunsetMin = toMin(sunsetStr);
+    const sunShowDot = nowMin >= sunriseMin && nowMin <= sunsetMin;
+    const sunArc = skyArc('sun', sunriseMin, sunsetMin, nowMin, sunShowDot, P);
+    const moonArcOk = mt.riseMin != null && mt.setMin != null && mt.riseMin < mt.setMin;
+    let moonArc = null;
+    if (moonArcOk) {
+      const moonUpNow = moonAlt(new Date(), st.lat, st.lon) >= 0;
+      const moonShowDot = moonUpNow && nowMin >= mt.riseMin && nowMin <= mt.setMin;
+      moonArc = skyArc('moon', mt.riseMin, mt.setMin, nowMin, moonShowDot, P);
+    }
+
     return {
       L, P, place: st.place || '—', region: st.region || '', updated: C.time.slice(11, 16),
       temp: Math.round(C.temperature_2m), feels: Math.round(C.apparent_temperature),
@@ -386,13 +404,14 @@
         { label: 'Viento', value: Math.round(cv(C.wind_speed_10m)), unit: uLbl, sub: 'del ' + dirLabel(C.wind_direction_10m) + ' (' + Math.round(C.wind_direction_10m) + '°)', icon: uiIcon('wind', 15), color: L ? 'oklch(0.5 0.12 175)' : 'oklch(0.8 0.13 175)', subIcon: windArrow(C.wind_direction_10m, 12) },
         { label: 'Rachas', value: Math.round(cv(C.wind_gusts_10m)), unit: uLbl, sub: C.wind_gusts_10m > 40 ? 'atención en bici' : 'sin sobresaltos', icon: uiIcon('gust', 15), color: L ? 'oklch(0.5 0.13 140)' : 'oklch(0.8 0.14 140)', subIcon: '' }
       ],
-      sunInfo: [
-        { label: 'Amanece', value: D.sunrise[0].slice(11, 16), icon: uiIcon('sunriseArrow', 18), color: L ? 'oklch(0.62 0.15 65)' : 'oklch(0.83 0.15 75)' },
-        { label: 'Atardece', value: D.sunset[0].slice(11, 16), icon: uiIcon('sunsetArrow', 18), color: L ? 'oklch(0.58 0.15 35)' : 'oklch(0.78 0.15 40)' }
+      sunArc, moonArc, moonArcOk,
+      sunRiseSet: [
+        { label: 'Amanece', value: sunriseStr, icon: uiIcon('sunriseArrow', 20), color: L ? 'oklch(0.62 0.15 65)' : 'oklch(0.83 0.15 75)' },
+        { label: 'Atardece', value: sunsetStr, icon: uiIcon('sunsetArrow', 20), color: L ? 'oklch(0.58 0.15 35)' : 'oklch(0.78 0.15 40)' }
       ],
-      moonInfo: [
-        { label: 'Sale la luna', value: mt.rise, icon: uiIcon('moonriseArrow', 18), color: L ? 'oklch(0.55 0.06 265)' : 'oklch(0.85 0.05 260)' },
-        { label: 'Se pone', value: mt.set, icon: uiIcon('moonsetArrow', 18), color: L ? 'oklch(0.62 0.04 265)' : 'oklch(0.75 0.04 260)' }
+      moonRiseSet: [
+        { label: 'Sale', value: mt.rise, icon: uiIcon('moonriseArrow', 20), color: L ? 'oklch(0.55 0.06 265)' : 'oklch(0.85 0.05 260)' },
+        { label: 'Se pone', value: mt.set, icon: uiIcon('moonsetArrow', 20), color: L ? 'oklch(0.62 0.04 265)' : 'oklch(0.75 0.04 260)' }
       ],
       moonPhase: mp.name, moonLit: mp.lit, hours,
       charts: [
@@ -401,7 +420,7 @@
         { title: 'Viento y dirección · ' + nH + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(chartHours, P, L) },
         { title: 'Lluvia · ' + nH + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(chartHours, P) }
       ],
-      days,
+      days, hasMoreDays, moreDaysLabel,
       coords: (st.fallback ? 'ubicación por defecto · ' : '') + st.lat.toFixed(3) + ', ' + st.lon.toFixed(3)
     };
   }
@@ -526,15 +545,15 @@
       <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);font-weight:600"><span style="display:flex;color:${t.color}">${t.subIcon}</span>${esc(t.sub)}</div>
     </div>`).join('');
 
-    const astroItemTpl = a => `<div style="display:flex;align-items:center;gap:9px">
-      <div style="flex:none;color:${a.color};display:flex">${a.icon}</div>
-      <div style="display:flex;flex-direction:column">
-        <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted)">${esc(a.label)}</div>
-        <div style="font-size:15px;font-weight:700;font-family:'IBM Plex Mono',monospace">${esc(a.value)}</div>
-      </div>
+    const riseSetRowTpl = items => `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px">
+      ${items.map((it, i) => `<div style="display:flex;flex-direction:column;gap:3px;align-items:${i > 0 ? 'flex-end' : 'flex-start'}">
+        <div style="font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--muted);text-align:${i > 0 ? 'right' : 'left'}">${esc(it.label)}</div>
+        <div style="display:flex;align-items:center;gap:7px">
+          <div style="color:${it.color};display:flex">${it.icon}</div>
+          <div style="font-size:17px;font-weight:800;font-family:'IBM Plex Mono',monospace">${esc(it.value)}</div>
+        </div>
+      </div>`).join('')}
     </div>`;
-    const sunItems = v.sunInfo.map(astroItemTpl).join('');
-    const moonItems = v.moonInfo.map(astroItemTpl).join('');
 
     const hours = v.hours.map(h => `<div style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:${h.bg};border:1px solid ${h.border};display:flex;flex-direction:column;align-items:center;gap:6px">
       <div style="font-size:10.5px;font-weight:700;color:var(--muted);font-family:'IBM Plex Mono',monospace">${esc(h.hour)}</div>
@@ -615,13 +634,17 @@
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
 
-      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${sunItems}
+      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+        <div class="section-label" style="padding-left:2px">Sol</div>
+        ${v.sunArc}
+        ${riseSetRowTpl(v.sunRiseSet)}
       </div>
 
-      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:14px 10px">
-        ${moonItems}
-        <div style="grid-column:1 / -1;padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
+      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+        <div class="section-label" style="padding-left:2px">Luna</div>
+        ${v.moonArcOk ? v.moonArc : ''}
+        ${riseSetRowTpl(v.moonRiseSet)}
+        <div style="padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:9px">
@@ -635,8 +658,9 @@
       ${charts}
 
       <div style="display:flex;flex-direction:column;gap:9px">
-        <div class="section-label" style="padding-left:2px">Próximos 7 días</div>
+        <div class="section-label" style="padding-left:2px">Próximos ${v.days.length} días</div>
         <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${days}</div>
+        ${v.hasMoreDays ? `<div class="pill-btn" data-action="loadMoreDays" style="align-self:center;padding:9px 18px;font-size:12px">${esc(v.moreDaysLabel)}</div>` : ''}
       </div>
 
       <div style="text-align:center;font-size:10px;color:var(--muted3);font-weight:600;letter-spacing:.06em;padding-top:6px">Datos: Open-Meteo · ${esc(v.coords)}</div>
@@ -844,6 +868,7 @@
     else if (action === 'pickSport') pickSport(t.getAttribute('data-sport'));
     else if (action === 'pickDay') pickDay(Number(t.getAttribute('data-day')));
     else if (action === 'loadMore') loadMore();
+    else if (action === 'loadMoreDays') loadMoreDays();
   });
 
   applyTheme();

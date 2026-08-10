@@ -92,7 +92,8 @@ function moonTimes(lat, lon) {
     prev = a;
   }
   const f = t => t ? String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') : '—';
-  return { rise: f(rise), set: f(set) };
+  const toMin = t => t ? t.getHours() * 60 + t.getMinutes() : null;
+  return { rise: f(rise), set: f(set), riseMin: toMin(rise), setMin: toMin(set) };
 }
 function moonPhase() {
   const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14);
