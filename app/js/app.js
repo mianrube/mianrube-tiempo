@@ -6,11 +6,26 @@
   const WIND_UNIT = 'km/h';
   const dayNames = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
+  const MAX_FAVORITES = 10;
+
   const state = {
     loading: true, error: null, data: null,
     place: null, region: null, lat: null, lon: null, fallback: false,
-    theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48
+    theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48,
+    favorites: loadFavorites(),
+    locationQuery: '', locationResults: [], locSearching: false, locFavMsg: ''
   };
+
+  function loadFavorites() {
+    try {
+      const raw = localStorage.getItem('favorites');
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list.slice(0, MAX_FAVORITES) : [];
+    } catch (e) { return []; }
+  }
+  function saveFavorites() { localStorage.setItem('favorites', JSON.stringify(state.favorites)); }
+  function favKey(item) { return item.lat.toFixed(2) + ',' + item.lon.toFixed(2); }
+  function isFavorite(item) { return state.favorites.some(f => favKey(f) === favKey(item)); }
 
   function getStoredTheme() {
     const saved = localStorage.getItem('theme');
@@ -51,7 +66,7 @@
     );
   }
 
-  async function fetchAll(lat, lon, fallback) {
+  async function fetchAll(lat, lon, fallback, known) {
     try {
       const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
         '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
@@ -61,21 +76,106 @@
       const r = await fetch(u);
       if (!r.ok) throw new Error('Open-Meteo respondió ' + r.status);
       const data = await r.json();
-      let place = fallback ? 'Madrid' : 'Ubicación actual', region = fallback ? 'Ubicación por defecto' : '';
-      try {
-        const g = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=es');
-        if (g.ok) {
-          const j = await g.json();
-          place = j.city || j.locality || j.principalSubdivision || place;
-          region = [j.principalSubdivision, j.countryName].filter(Boolean).join(', ') || region;
-        }
-      } catch (e) { /* geocoding is best-effort */ }
+      let place = known ? known.place : (fallback ? 'Madrid' : 'Ubicación actual');
+      let region = known ? known.region : (fallback ? 'Ubicación por defecto' : '');
+      if (!known) {
+        try {
+          const g = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=es');
+          if (g.ok) {
+            const j = await g.json();
+            place = j.city || j.locality || j.principalSubdivision || place;
+            region = [j.principalSubdivision, j.countryName].filter(Boolean).join(', ') || region;
+          }
+        } catch (e) { /* geocoding is best-effort */ }
+      }
       Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, dayIdx: 0, hourLimit: 48 });
       render();
     } catch (e) {
       Object.assign(state, { loading: false, error: e.message || 'Error de red' });
       render();
     }
+  }
+
+  function selectLocation(item) {
+    state.view = 'main';
+    state.loading = true; state.error = null;
+    render();
+    window.scrollTo(0, 0);
+    fetchAll(item.lat, item.lon, false, { place: item.name, region: item.region });
+  }
+
+  /* ---------- location search view ---------- */
+
+  function openLocation() {
+    state.view = 'location';
+    state.locationQuery = ''; state.locationResults = []; state.locSearching = false; state.locFavMsg = '';
+    render();
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => { const el = document.getElementById('locSearchInput'); if (el) el.focus(); });
+  }
+
+  function useGPS() { state.view = 'main'; load(); }
+
+  let searchToken = 0;
+  async function runLocationSearch(q) {
+    const token = ++searchToken;
+    state.locSearching = true;
+    updateResultsBlock();
+    try {
+      const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=8&language=es&format=json');
+      const json = r.ok ? await r.json() : { results: [] };
+      if (token !== searchToken) return;
+      state.locationResults = (json.results || []).map(x => ({
+        name: x.name,
+        region: [x.admin1, x.country].filter(Boolean).join(', '),
+        lat: x.latitude, lon: x.longitude
+      }));
+    } catch (e) {
+      if (token !== searchToken) return;
+      state.locationResults = [];
+    }
+    state.locSearching = false;
+    updateResultsBlock();
+  }
+
+  let searchDebounce = null;
+  document.addEventListener('input', e => {
+    if (!e.target || e.target.id !== 'locSearchInput') return;
+    state.locationQuery = e.target.value;
+    clearTimeout(searchDebounce);
+    const q = state.locationQuery.trim();
+    if (q.length < 2) { state.locationResults = []; state.locSearching = false; updateResultsBlock(); return; }
+    searchDebounce = setTimeout(() => runLocationSearch(q), 300);
+  });
+
+  function toggleFavoriteItem(item) {
+    const idx = state.favorites.findIndex(f => favKey(f) === favKey(item));
+    if (idx >= 0) {
+      state.favorites.splice(idx, 1);
+      state.locFavMsg = '';
+    } else {
+      if (state.favorites.length >= MAX_FAVORITES) { state.locFavMsg = 'Quita una favorita antes de añadir otra'; updateFavoritesBlock(); return; }
+      state.favorites.push({ name: item.name, region: item.region, lat: item.lat, lon: item.lon });
+      state.locFavMsg = '';
+    }
+    saveFavorites();
+    updateResultsBlock();
+    updateFavoritesBlock();
+  }
+  function removeFavoriteAt(idx) {
+    state.favorites.splice(idx, 1);
+    state.locFavMsg = '';
+    saveFavorites();
+    updateResultsBlock();
+    updateFavoritesBlock();
+  }
+  function updateResultsBlock() {
+    const el = document.getElementById('locResultsBlock');
+    if (el) el.innerHTML = resultsBlockHtml();
+  }
+  function updateFavoritesBlock() {
+    const el = document.getElementById('locFavoritesBlock');
+    if (el) el.innerHTML = favoritesBlockHtml();
   }
 
   function openHours() { state.view = 'hours'; state.dayIdx = 0; state.hourLimit = 48; render(); window.scrollTo(0, 0); }
@@ -293,12 +393,15 @@
     const spin = state.loading ? 'animation:spin 1s linear infinite' : '';
     return `
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-      <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+      <div class="clickable" data-action="openLocation" style="display:flex;flex-direction:column;gap:3px;min-width:0">
         <div style="display:flex;align-items:center;gap:6px">
           <div style="width:7px;height:7px;border-radius:99px;background:var(--live)"></div>
           <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ubicación actual</div>
         </div>
-        <div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(state.place || '—')}</div>
+        <div style="display:flex;align-items:center;gap:3px;min-width:0">
+          <div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(state.place || '—')}</div>
+          <div style="flex:none;color:var(--muted);display:flex;margin-top:5px">${uiIcon('chevronDown', 14)}</div>
+        </div>
         <div style="font-size:12px;color:var(--muted);font-weight:500">${esc(state.region || '')}${state.region ? ' · ' : ''}${state.data ? 'datos ' + state.data.current.time.slice(11, 16) : ''}</div>
       </div>
       <div style="display:flex;gap:8px;flex:none">
@@ -583,6 +686,79 @@
     </div>`;
   }
 
+  /* ---------- location search view ---------- */
+
+  function resultRowHtml(r, i) {
+    const fav = isFavorite(r);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
+      <div class="clickable" data-action="pickResult" data-idx="${i}" style="flex:1;display:flex;align-items:center;gap:10px;min-width:0">
+        <div style="flex:none;color:var(--muted);display:flex">${uiIcon('pin', 16)}</div>
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.region)}</div>
+        </div>
+      </div>
+      <div class="clickable" data-action="toggleFavorite" data-idx="${i}" style="flex:none;padding:6px;display:flex;color:${fav ? 'var(--hot)' : 'var(--muted)'}">${uiIcon(fav ? 'star' : 'starOutline', 18)}</div>
+    </div>`;
+  }
+  function resultsBlockHtml() {
+    const q = (state.locationQuery || '').trim();
+    if (q.length < 2) return '';
+    if (state.locSearching) return `<div style="font-size:12px;color:var(--muted);font-weight:600;padding:10px 2px">Buscando…</div>`;
+    const results = state.locationResults || [];
+    if (!results.length) return `<div style="font-size:12px;color:var(--muted);font-weight:600;padding:10px 2px">Sin resultados para "${esc(q)}"</div>`;
+    return `<div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${results.map(resultRowHtml).join('')}</div>`;
+  }
+
+  function favoriteRowHtml(f, i, pos) {
+    return `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;${pos > 0 ? 'border-top:1px solid var(--border)' : ''}">
+      <div class="clickable" data-action="pickFavorite" data-favidx="${i}" style="flex:1;display:flex;align-items:center;gap:10px;min-width:0">
+        <div style="flex:none;color:var(--hot);display:flex">${uiIcon('star', 16)}</div>
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.region)}</div>
+        </div>
+      </div>
+      <div class="clickable" data-action="removeFavorite" data-favidx="${i}" style="flex:none;padding:6px;display:flex;color:var(--muted)">${uiIcon('close', 16)}</div>
+    </div>`;
+  }
+  function favoritesBlockHtml() {
+    const favorites = state.favorites || [];
+    const sorted = favorites
+      .map((f, i) => ({ f, i }))
+      .sort((a, b) => a.f.name.localeCompare(b.f.name, 'es', { sensitivity: 'base' }));
+    const rows = favorites.length
+      ? sorted.map(({ f, i }, pos) => favoriteRowHtml(f, i, pos)).join('')
+      : `<div style="padding:14px;font-size:12px;color:var(--muted);font-weight:600">Aún no tienes favoritas. Busca una ciudad y toca la estrella.</div>`;
+    return `<div class="section-label" style="padding-left:2px">Favoritas (${favorites.length}/${MAX_FAVORITES})</div>
+      ${state.locFavMsg ? `<div style="font-size:11px;font-weight:700;color:var(--hot);padding:0 2px">${esc(state.locFavMsg)}</div>` : ''}
+      <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>`;
+  }
+
+  function locationViewTpl() {
+    return `<div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="pill-btn" data-action="backToMain" style="padding:8px 13px 8px 10px">${uiIcon('back', 16)}Volver</div>
+        <div class="section-label">Ubicación</div>
+      </div>
+
+      <div class="clickable" data-action="useGPS" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+        <div style="flex:none;color:var(--live);display:flex">${uiIcon('pin', 18)}</div>
+        <div style="display:flex;flex-direction:column">
+          <div style="font-size:13px;font-weight:800">Mi ubicación</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted)">Usar la ubicación del dispositivo</div>
+        </div>
+      </div>
+
+      <input id="locSearchInput" type="text" autocomplete="off" placeholder="Buscar ciudad, pueblo..." value="${esc(state.locationQuery || '')}"
+        style="width:100%;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;font-family:Manrope,Helvetica,sans-serif;outline:none">
+
+      <div id="locResultsBlock">${resultsBlockHtml()}</div>
+
+      <div id="locFavoritesBlock" style="display:flex;flex-direction:column;gap:9px">${favoritesBlockHtml()}</div>
+    </div>`;
+  }
+
   /* ---------- render ---------- */
 
   function render() {
@@ -590,6 +766,7 @@
     let body;
     if (state.loading) body = loadingTpl();
     else if (state.error) body = errorTpl();
+    else if (state.view === 'location') body = locationViewTpl();
     else if (state.data) {
       const v = computeDerived();
       body = state.view === 'hours' ? hoursViewTpl(v) : mainViewTpl(v);
@@ -604,6 +781,12 @@
     const action = t.getAttribute('data-action');
     if (action === 'toggleTheme') toggleTheme();
     else if (action === 'reload') load();
+    else if (action === 'openLocation') openLocation();
+    else if (action === 'useGPS') useGPS();
+    else if (action === 'pickResult') { const item = state.locationResults[Number(t.getAttribute('data-idx'))]; if (item) selectLocation(item); }
+    else if (action === 'toggleFavorite') { const item = state.locationResults[Number(t.getAttribute('data-idx'))]; if (item) toggleFavoriteItem(item); }
+    else if (action === 'pickFavorite') { const item = state.favorites[Number(t.getAttribute('data-favidx'))]; if (item) selectLocation(item); }
+    else if (action === 'removeFavorite') removeFavoriteAt(Number(t.getAttribute('data-favidx')));
     else if (action === 'openHours') openHours();
     else if (action === 'backToMain') backToMain();
     else if (action === 'pickSport') pickSport(t.getAttribute('data-sport'));
