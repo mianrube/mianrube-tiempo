@@ -7,6 +7,7 @@ function palette(light) {
     warmLine: 'oklch(0.64 0.18 45)', warmSoft: 'oklch(0.72 0.07 45)', warmText: 'oklch(0.45 0.14 45)',
     tealLine: 'oklch(0.55 0.14 195)', tealSoft: 'oklch(0.7 0.07 195)', tealText: 'oklch(0.42 0.12 195)',
     rainBar: 'oklch(0.6 0.15 250)', probLine: 'oklch(0.55 0.13 235)', probText: 'oklch(0.42 0.12 240)',
+    humidLine: 'oklch(0.56 0.13 285)', humidSoft: 'oklch(0.7 0.06 285)', humidText: 'oklch(0.45 0.12 285)',
     dot: 'oklch(0.995 0.003 250)', axis: 'oklch(0.58 0.02 250)', grid: 'oklch(0.88 0.008 250)',
     chip: 'oklch(0.4 0.02 255)'
   } : {
@@ -15,6 +16,7 @@ function palette(light) {
     warmLine: 'oklch(0.8 0.16 55)', warmSoft: 'oklch(0.72 0.06 55)', warmText: 'oklch(0.93 0.04 60)',
     tealLine: 'oklch(0.8 0.15 195)', tealSoft: 'oklch(0.7 0.09 195)', tealText: 'oklch(0.92 0.04 195)',
     rainBar: 'oklch(0.7 0.15 250)', probLine: 'oklch(0.85 0.11 235)', probText: 'oklch(0.9 0.06 235)',
+    humidLine: 'oklch(0.78 0.13 285)', humidSoft: 'oklch(0.68 0.08 285)', humidText: 'oklch(0.88 0.06 285)',
     dot: 'oklch(0.2 0.02 255)', axis: 'oklch(0.6 0.02 250)', grid: 'oklch(0.32 0.02 255)',
     chip: 'oklch(0.85 0.02 250)'
   };

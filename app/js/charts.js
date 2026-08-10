@@ -104,6 +104,27 @@ function windChart(hs, P, light) {
   return svgChart(W, H, inner);
 }
 
+function humidChart(hs, P, light) {
+  const W = 352, H = 128, top = 26, bot = 20, n = hs.length;
+  const vals = hs.map(h => h.hum);
+  const x = i => i * (W / (n - 1)), y = v => top + (H - top - bot) * (1 - v / 100);
+  const p = vals.map((v, i) => [x(i), y(v)]);
+  const line = sp(p), area = line + ' L' + W + ',' + (H - bot) + ' L0,' + (H - bot) + ' Z';
+  let marks = '';
+  vals.forEach((v, i) => {
+    marks += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${n <= 9 ? 3.4 : 2.4}" fill="${P.dot}" stroke="${P.humidLine}" stroke-width="2"/>`;
+    if (n <= 9 || i % 3 === 0) {
+      const cx = Math.min(Math.max(x(i), 13), W - 13);
+      marks += `<text x="${cx.toFixed(1)}" y="${(y(v) - 8).toFixed(1)}" fill="${P.humidText}" font-size="${n <= 9 ? 11 : 9.5}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(v)}%</text>`;
+    }
+  });
+  const inner = axisSvg(hs.map(h => h.hour), W, H, n, top - 10, null, P)
+    + `<path d="${area}" fill="${P.humidLine}" opacity="${light ? 0.1 : 0.14}"/>`
+    + `<path d="${line}" stroke="${P.humidLine}" stroke-width="2.6" fill="none"/>`
+    + marks;
+  return svgChart(W, H, inner);
+}
+
 function rainChart(hs, P) {
   const W = 352, H = 134, top = 26, bot = 20, n = hs.length;
   const mm = hs.map(h => h.p), pr = hs.map(h => h.pr);

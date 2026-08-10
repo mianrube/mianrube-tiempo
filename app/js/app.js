@@ -209,6 +209,7 @@
 
   function computeDerived() {
     const st = state, d = st.data, L = currentTheme() === 'light', P = palette(L);
+    const humColor = L ? 'oklch(0.52 0.11 195)' : 'oklch(0.78 0.11 195)';
     const H = d.hourly, C = d.current, D = d.daily;
     const uLbl = WIND_UNIT;
     const nowKey = C.time.slice(0, 13);
@@ -224,6 +225,7 @@
 
     const hours = idx.map(i => {
       const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0, q = sc(i);
+      const uvv = Math.round((H.uv_index ? H.uv_index[i] : 0) || 0);
       return {
         score: q.n, scoreColor: q.s.color, scoreBg: q.s.bg, scoreBorder: q.s.border,
         sportIcon: uiIcon(sport === 'bike' ? 'bike' : 'run', 11, q.s.color),
@@ -234,13 +236,16 @@
         mm: mmv > 0 ? mmv.toFixed(1) + 'mm' : '—', mmColor: mmColor(mmv, L),
         arrow: windArrow(H.wind_direction_10m[i], 12), dir: dirLabel(H.wind_direction_10m[i]),
         wind: Math.round(cv(H.wind_speed_10m[i])) + ' ' + uLbl, gust: Math.round(cv(H.wind_gusts_10m[i])) + ' ' + uLbl,
+        uv: uvv, uvColor: uvScale(uvv, L).color,
+        hum: H.relative_humidity_2m ? Math.round(H.relative_humidity_2m[i]) : null, humColor,
         bg: cur ? 'var(--now-bg)' : 'var(--surface)', border: cur ? 'var(--now-border)' : 'var(--border)'
       };
     });
     const chartHours = idx.map(i => ({
       hour: H.time[i].slice(11, 13) + 'h', s: hourScore(sport, H, i, cv, L), t: H.temperature_2m[i], a: H.apparent_temperature[i],
       w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
-      p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0
+      p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0,
+      hum: H.relative_humidity_2m ? H.relative_humidity_2m[i] : 0
     }));
 
     const daysToShow = Math.min(st.dayLimit || 7, D.time.length);
@@ -346,6 +351,7 @@
     let lastDate = '';
     const hourRows = allIdxs.map(i => {
       const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0, q = sc(i);
+      const uvv = Math.round((H.uv_index ? H.uv_index[i] : 0) || 0);
       const dstr = H.time[i].slice(0, 10);
       let head = '';
       if (dstr !== lastDate) {
@@ -363,6 +369,8 @@
         mm: mmv > 0 ? mmv.toFixed(1) + ' mm' : '—', mmColor: mmColor(mmv, L),
         arrow: windArrow(H.wind_direction_10m[i], 12), dir: dirLabel(H.wind_direction_10m[i]),
         wind: Math.round(cv(H.wind_speed_10m[i])), gust: Math.round(cv(H.wind_gusts_10m[i])),
+        uv: uvv, uvColor: uvScale(uvv, L).color,
+        hum: H.relative_humidity_2m ? Math.round(H.relative_humidity_2m[i]) : null, humColor,
         bg: cur ? 'var(--now-bg)' : 'transparent'
       };
     });
@@ -370,7 +378,8 @@
     const next24Hours = next24Idxs.map(i => ({
       hour: H.time[i].slice(11, 13) + 'h', s: hourScore(sport, H, i, cv, L), t: H.temperature_2m[i], a: H.apparent_temperature[i],
       w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
-      p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0
+      p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0,
+      hum: H.relative_humidity_2m ? H.relative_humidity_2m[i] : 0
     }));
     const dayLabel = (dayTabs[dayIdx] ? 'desde ' + dayTabs[dayIdx].label + ' ' + dayTabs[dayIdx].date : '') + ' · ' + hourRows.length + ' h';
 
@@ -403,6 +412,7 @@
       dayCharts: [
         { title: 'Conveniencia ' + sportLabel + ' · ' + next24Hours.length + ' h', legend: [{ label: 'nota 0-100', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(next24Hours, P, n => scoreStyle100(n, L), scoreHue100, L) },
         { title: 'Temperatura · ' + next24Hours.length + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(next24Hours, P, L) },
+        { title: 'Humedad · ' + next24Hours.length + ' h', legend: [{ label: '%', color: P.humidLine, opacity: 1 }], svg: humidChart(next24Hours, P, L) },
         { title: 'Viento y dirección · ' + next24Hours.length + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(next24Hours, P, L) },
         { title: 'Lluvia · ' + next24Hours.length + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(next24Hours, P) }
       ],
@@ -425,6 +435,7 @@
       charts: [
         { title: 'Conveniencia ' + sportLabel + ' · ' + nH + ' h', legend: [{ label: 'nota 0-100', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(chartHours, P, n => scoreStyle100(n, L), scoreHue100, L) },
         { title: 'Temperatura · ' + nH + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(chartHours, P, L) },
+        { title: 'Humedad · ' + nH + ' h', legend: [{ label: '%', color: P.humidLine, opacity: 1 }], svg: humidChart(chartHours, P, L) },
         { title: 'Viento y dirección · ' + nH + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(chartHours, P, L) },
         { title: 'Lluvia · ' + nH + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(chartHours, P) }
       ],
@@ -583,6 +594,10 @@
         <div style="font-size:9.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text-soft);white-space:nowrap">${h.wind}</div>
         <div style="font-size:9.5px;font-weight:600;color:var(--muted2);font-family:'IBM Plex Mono',monospace;white-space:nowrap">r ${h.gust}</div>
       </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:1px">
+        <div style="font-size:10.5px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${h.uvColor};white-space:nowrap">UV ${h.uv}</div>
+        ${h.hum != null ? `<div style="display:flex;align-items:center;gap:2px;font-size:9.5px;font-weight:600;color:${h.humColor};font-family:'IBM Plex Mono',monospace;white-space:nowrap"><span style="display:flex">${uiIcon('humid', 12, h.humColor)}</span>${h.hum}%</div>` : ''}
+      </div>
     </div>`).join('');
 
     const charts = v.charts.map(chartCardTpl).join('');
@@ -712,6 +727,10 @@
             <div style="font-size:10.5px;font-weight:600;color:var(--warm)">${r.feels}°</div>
           </div>
           <div style="font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
+          <div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">
+            <div style="font-size:11px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${r.uvColor};white-space:nowrap">UV ${r.uv}</div>
+            ${r.hum != null ? `<div style="display:flex;align-items:center;gap:3px;font-size:10px;font-weight:600;color:${r.humColor};font-family:'IBM Plex Mono',monospace;white-space:nowrap"><span style="display:flex">${uiIcon('humid', 13, r.humColor)}</span>${r.hum}%</div>` : ''}
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace">
           <div style="font-size:12px;font-weight:800;color:${r.probColor}">${r.prob}</div>
