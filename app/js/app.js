@@ -71,7 +71,7 @@
     try {
       const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
         '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
-        '&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day' +
+        '&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day,visibility,shortwave_radiation,uv_index' +
         '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max' +
         '&timezone=auto&forecast_days=14';
       const r = await fetch(u);
@@ -220,7 +220,7 @@
     const isDay = C.is_day === 1;
     const probNow = H.precipitation_probability[i0] || 0;
     const sport = st.sport || 'bike';
-    const sc = i => { const n = hourScore(sport, H, i, cv, L); return { n, s: scoreStyle(n, L) }; };
+    const sc = i => { const n = hourScore(sport, H, i, cv, L); return { n, s: scoreStyle100(n, L) }; };
 
     const hours = idx.map(i => {
       const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0, q = sc(i);
@@ -266,7 +266,7 @@
       };
     });
 
-    const uv = Math.round(D.uv_index_max[0] || 0), uvS = uvScale(uv, L);
+    const uv = Math.round((H.uv_index ? H.uv_index[i0] : D.uv_index_max[0]) || 0), uvS = uvScale(uv, L);
     const bestFor = kind => {
       let b = null, any = null;
       const lim = Math.min(i0 + 36, H.time.length - 1);
@@ -277,28 +277,36 @@
         if (!b || v > b.v) b = { v, i };
       }
       b = b || any;
-      if (!b) return { text: '—', day: '', score: '—', style: scoreStyle(5, L) };
+      if (!b) return { text: '—', day: '', score: '—', style: scoreStyle100(50, L) };
       const end = H.time[b.i + 2] || H.time[b.i + 1];
       const dstr = H.time[b.i].slice(0, 10);
       return {
         text: H.time[b.i].slice(11, 16) + '–' + end.slice(11, 16),
         day: dstr === D.time[0] ? 'hoy' : dstr === D.time[1] ? 'mañana' : dayNames[new Date(dstr + 'T12:00:00').getDay()],
-        score: Math.round(b.v), style: scoreStyle(Math.round(b.v), L)
+        score: Math.round(b.v), style: scoreStyle100(Math.round(b.v), L)
       };
     };
     const mkAct = (kind, name, iconName) => {
-      const a = activity(kind, C.temperature_2m, cv(C.wind_speed_10m), C.wind_gusts_10m, probNow, C.precipitation || 0, C.weather_code, C.relative_humidity_2m);
-      const ss = scoreStyle(a.score, L), on = sport === kind, bw = bestFor(kind);
+      const w = buildWeatherInput({
+        temperature: C.temperature_2m, apparentTemperature: C.apparent_temperature,
+        relativeHumidity: C.relative_humidity_2m,
+        precipitation: C.precipitation || 0, precipitationProbability: probNow,
+        weatherCode: C.weather_code,
+        windSpeed: cv(C.wind_speed_10m), windGust: cv(C.wind_gusts_10m),
+        visibility: H.visibility ? H.visibility[i0] : undefined,
+        shortwaveRadiation: H.shortwave_radiation ? H.shortwave_radiation[i0] : undefined,
+        uvIndex: H.uv_index ? H.uv_index[i0] : undefined
+      });
+      const a = activity(kind, w, kind === 'bike' ? 'la bici' : 'correr');
+      const ss = scoreStyle100(a.score, L), on = sport === kind, bw = bestFor(kind);
       return {
         kind, name, label: a.label, note: a.note, on,
         bestText: bw.text, bestDay: bw.day, bestScore: bw.score,
         bestColor: bw.style.color, bestBg: bw.style.bg, bestBorder: bw.style.border,
         score: a.score, scoreColor: ss.color, scoreBg: ss.bg, scoreBorder: ss.border,
-        bg: L ? `oklch(0.96 0.04 ${a.hue})` : `oklch(0.26 0.045 ${a.hue} / 0.55)`,
-        border: L ? `oklch(0.87 0.08 ${a.hue})` : `oklch(0.5 0.1 ${a.hue} / 0.5)`,
-        dot: L ? `oklch(0.68 0.14 ${a.hue})` : `oklch(0.42 0.1 ${a.hue})`,
-        text: L ? `oklch(0.45 0.14 ${a.hue})` : `oklch(0.85 0.15 ${a.hue})`,
-        icon: uiIcon(iconName, 19, L ? `oklch(0.99 0.01 ${a.hue})` : `oklch(0.95 0.03 ${a.hue})`)
+        border: ss.border, text: ss.color,
+        gauge: scoreGauge(a.score, ss.color, P.grid, 'var(--muted)'),
+        icon: uiIcon(iconName, 16, ss.color)
       };
     };
     const acts = [mkAct('bike', 'Bici', 'bike'), mkAct('run', 'Correr', 'run')];
@@ -393,7 +401,7 @@
       dayTabs, hourRows, dayLabel, hasMore: limit < total,
       moreLabel: 'Cargar ' + Math.min(48, total - limit) + ' h más · quedan ' + (total - limit),
       dayCharts: [
-        { title: 'Conveniencia ' + sportLabel + ' · ' + next24Hours.length + ' h', legend: [{ label: 'nota 1-10', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(next24Hours, P, n => scoreStyle(n, L), scoreHue, L) },
+        { title: 'Conveniencia ' + sportLabel + ' · ' + next24Hours.length + ' h', legend: [{ label: 'nota 0-100', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(next24Hours, P, n => scoreStyle100(n, L), scoreHue100, L) },
         { title: 'Temperatura · ' + next24Hours.length + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(next24Hours, P, L) },
         { title: 'Viento y dirección · ' + next24Hours.length + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(next24Hours, P, L) },
         { title: 'Lluvia · ' + next24Hours.length + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(next24Hours, P) }
@@ -415,7 +423,7 @@
       ],
       moonPhase: mp.name, moonLit: mp.lit, hours,
       charts: [
-        { title: 'Conveniencia ' + sportLabel + ' · ' + nH + ' h', legend: [{ label: 'nota 1-10', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(chartHours, P, n => scoreStyle(n, L), scoreHue, L) },
+        { title: 'Conveniencia ' + sportLabel + ' · ' + nH + ' h', legend: [{ label: 'nota 0-100', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(chartHours, P, n => scoreStyle100(n, L), scoreHue100, L) },
         { title: 'Temperatura · ' + nH + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(chartHours, P, L) },
         { title: 'Viento y dirección · ' + nH + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(chartHours, P, L) },
         { title: 'Lluvia · ' + nH + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(chartHours, P) }
@@ -503,20 +511,17 @@
   }
 
   function actCardTpl(act) {
-    return `<div style="padding:15px 16px;border-radius:20px;background:${act.bg};border:1px solid ${act.border};display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="flex:none;width:44px;height:44px;border-radius:15px;background:${act.dot};display:grid;place-items:center">${act.icon}</div>
-        <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
-          <div style="font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ahora para ${esc(act.name)}</div>
-          <div style="font-size:17px;font-weight:800;line-height:1.1;color:${act.text};text-wrap:pretty">${esc(act.label)}</div>
-        </div>
-        <div style="margin-left:auto;flex:none;display:flex;align-items:baseline;gap:2px;padding:6px 12px;border-radius:99px;background:${act.scoreBg};border:1px solid ${act.scoreBorder};font-family:'IBM Plex Mono',monospace;color:${act.scoreColor}">
-          <div style="font-size:22px;font-weight:800;line-height:1">${act.score}</div>
-          <div style="font-size:10px;font-weight:600;opacity:.7">/10</div>
-        </div>
+    return `<div style="padding:15px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:7px">
+        <div style="display:flex;color:${act.text}">${act.icon}</div>
+        <div style="font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ahora para ${esc(act.name)}</div>
       </div>
-      <div style="font-size:12.5px;color:var(--text-soft);font-weight:500;text-wrap:pretty">${esc(act.note)}</div>
-      <div style="padding-top:11px;border-top:1px solid ${act.border};display:flex;align-items:center;gap:10px">
+      <div style="margin:0 -6px">${act.gauge}</div>
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:center;text-align:center;margin-top:-16px">
+        <div style="font-size:17px;font-weight:800;line-height:1.1;color:${act.text}">${esc(act.label)}</div>
+        <div style="font-size:12.5px;color:var(--text-soft);font-weight:500;text-wrap:pretty;max-width:300px">${esc(act.note)}</div>
+      </div>
+      <div style="padding-top:11px;margin-top:6px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
         <div style="display:flex;flex-direction:column;gap:1px">
           <div style="font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--muted)">Mejor hueco (24 h)</div>
           <div style="display:flex;align-items:baseline;gap:7px">
@@ -526,7 +531,7 @@
         </div>
         <div style="margin-left:auto;display:flex;align-items:baseline;gap:2px;padding:5px 11px;border-radius:99px;background:${act.bestBg};border:1px solid ${act.bestBorder};font-family:'IBM Plex Mono',monospace;color:${act.bestColor}">
           <div style="font-size:18px;font-weight:800;line-height:1">${act.bestScore}</div>
-          <div style="font-size:10px;font-weight:600;opacity:.7">/10</div>
+          <div style="font-size:10px;font-weight:600;opacity:.7">/100</div>
         </div>
       </div>
     </div>`;
@@ -627,12 +632,22 @@
         </div>
       </div>
 
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
+
       <div style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;gap:6px">${sportChipsTpl(v.sportChips, false)}</div>
         ${actCardTpl(v.act)}
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
+          <div class="section-label">Próximas horas</div>
+          <div class="pill-btn" data-action="openHours">${uiIcon('expand', 14)}Ver todas</div>
+        </div>
+        <div style="display:flex;gap:6px">${hours}</div>
+      </div>
+
+      ${charts}
 
       <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
         <div class="section-label" style="padding-left:2px">Sol</div>
@@ -646,16 +661,6 @@
         ${riseSetRowTpl(v.moonRiseSet)}
         <div style="padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
       </div>
-
-      <div style="display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
-          <div class="section-label">Próximas horas</div>
-          <div class="pill-btn" data-action="openHours">${uiIcon('expand', 14)}Ver todas</div>
-        </div>
-        <div style="display:flex;gap:6px">${hours}</div>
-      </div>
-
-      ${charts}
 
       <div style="display:flex;flex-direction:column;gap:9px">
         <div class="section-label" style="padding-left:2px">Próximos ${v.days.length} días</div>

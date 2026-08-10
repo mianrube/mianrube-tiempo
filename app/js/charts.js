@@ -35,6 +35,21 @@ function svgChart(W, H, inner) {
   return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" fill="none" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 }
 
+function scoreGauge(score, color, trackColor, mutedColor) {
+  const W = 220, H = 140, cx = 110, cy = 118, r = 88, sw = 18;
+  const arcD = `M${(cx - r).toFixed(1)},${cy} A${r},${r} 0 0 1 ${(cx + r).toFixed(1)},${cy}`;
+  const frac = clamp(score / 100, 0, 1);
+  const arcLen = Math.PI * r;
+  const dash = (arcLen * frac).toFixed(1), gap = (arcLen * (1 - frac) + 2).toFixed(1);
+  const inner = `
+    <path d="${arcD}" fill="none" stroke="${trackColor}" stroke-width="${sw}" stroke-linecap="round"/>
+    <path d="${arcD}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${dash} ${gap}"/>
+    <text x="${cx}" y="${cy - 22}" text-anchor="middle" font-size="42" font-weight="800" font-family="'IBM Plex Mono', monospace" fill="${color}">${Math.round(score)}</text>
+    <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="12" font-weight="700" font-family="Manrope, Helvetica, sans-serif" fill="${mutedColor}">de 100</text>
+  `;
+  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">${inner}</svg>`;
+}
+
 function tempChart(hs, P, light) {
   const W = 352, H = 142, top = 30, bot = 20, n = hs.length;
   const vals = hs.map(h => h.t), app = hs.map(h => h.a);
@@ -121,7 +136,7 @@ function scoreChart(hs, P, scoreStyle, scoreHue, light) {
   const cxOf = i => i * (W / n) + (W / n) / 2;
   let bars = '';
   hs.forEach((o, i) => {
-    const st = scoreStyle(o.s), h = Math.max((H - top - bot) * (o.s / 10), 3);
+    const st = scoreStyle(o.s), h = Math.max((H - top - bot) * (o.s / 100), 3);
     bars += `<rect x="${(cxOf(i) - bw / 2).toFixed(1)}" y="${(H - bot - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="oklch(0.7 0.15 ${scoreHue(o.s)})" opacity="${light ? 0.9 : 0.85}"/>`;
     if (n <= 9 || i % 3 === 0) bars += `<text x="${cxOf(i).toFixed(1)}" y="${(H - bot - h - 5).toFixed(1)}" fill="${st.color}" font-size="${n <= 9 ? 11 : 9}" font-weight="800" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${o.s}</text>`;
   });
