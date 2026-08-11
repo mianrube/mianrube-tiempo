@@ -18,9 +18,10 @@
     gpsPlace: null, gpsRegion: null, gpsFallback: false,
     canInstall: false,
     route: {
-      step: 'form', fileName: '', gpx: null, summary: null, error: null,
+      step: 'form', fileName: '', gpx: null, summary: null, error: null, displayName: '',
       startTime: defaultRouteStartValue(), paceKmh: 30, sport: 'bike', reversed: false,
-      analyzing: false, result: null, saved: [], savedLoaded: false, listScores: {}
+      analyzing: false, result: null, saved: [], savedLoaded: false, listScores: {},
+      editingName: false, editingSavedId: null, nameDraft: ''
     }
   };
   let deferredInstallPrompt = null;
@@ -467,6 +468,10 @@
     scheduleRouteListScoreRefresh();
   }
 
+  function stripRouteExt(name) { return (name || 'ruta').replace(/\.(gpx|tcx)$/i, ''); }
+  function routeDisplayName(record) { return (record && record.name && record.name.trim()) || stripRouteExt(record ? record.fileName : ''); }
+  function routeIdFor(fileName, text) { return fileName + '::' + (text ? text.length : 0); }
+
   function loadGpxFromText(text, fileName) {
     try {
       const gpx = parseRouteFile(text, fileName);
@@ -481,6 +486,10 @@
       state.route.reversed = false;
       state.route.summary = { distKm, points: pts.length, gain: gainLoss.gain, loss: gainLoss.loss, hasEle: hasElevation(pts) };
       state.route.error = null;
+      const id = routeIdFor(state.route.fileName, text);
+      const existingRec = (state.route.saved || []).find(r => r.id === id);
+      state.route.displayName = routeDisplayName(existingRec || { fileName: state.route.fileName });
+      state.route.editingName = false;
     } catch (e) {
       state.route.gpx = null; state.route.gpxText = null; state.route.summary = null;
       state.route.error = e.message || 'No se pudo leer el archivo de ruta';
@@ -505,14 +514,15 @@
   }
   async function persistCurrentRoute() {
     if (!state.route.gpxText) return;
-    const id = state.route.fileName + '::' + state.route.gpxText.length;
+    const id = routeIdFor(state.route.fileName, state.route.gpxText);
     const exists = state.route.saved.some(r => r.id === id);
     if (exists) return;
     const res = state.route.result;
     const record = {
       id, fileName: state.route.fileName, gpxText: state.route.gpxText, addedAt: Date.now(),
       distKm: res ? res.totalDistKm : (state.route.summary ? state.route.summary.distKm : null),
-      elevGain: res ? res.elevationGain : (state.route.summary ? state.route.summary.gain : null)
+      elevGain: res ? res.elevationGain : (state.route.summary ? state.route.summary.gain : null),
+      name: state.route.displayName && state.route.displayName !== stripRouteExt(state.route.fileName) ? state.route.displayName : null
     };
     try {
       await idbSaveRoute(record);
@@ -526,6 +536,51 @@
         overflow.forEach(r => idbDeleteRoute(r.id).catch(() => {}));
       }
     } catch (e) { /* best-effort: sin espacio o navegador sin IndexedDB */ }
+  }
+
+  /* ---------- renombrar rutas ---------- */
+
+  let nameEditEscaped = false;
+
+  async function renameCurrentRoute(name) {
+    const trimmed = (name || '').trim();
+    await persistCurrentRoute(); // idempotente: garantiza que exista un registro al que asociar el nombre
+    const id = routeIdFor(state.route.fileName, state.route.gpxText);
+    const rec = state.route.saved.find(r => r.id === id);
+    if (rec) {
+      rec.name = trimmed || null;
+      try { await idbSaveRoute(rec); } catch (e) { /* best-effort */ }
+    }
+    state.route.displayName = trimmed || stripRouteExt(state.route.fileName);
+    render();
+  }
+
+  async function renameSavedRoute(id, name) {
+    const trimmed = (name || '').trim();
+    const rec = state.route.saved.find(r => r.id === id);
+    if (!rec) return;
+    rec.name = trimmed || null;
+    try { await idbSaveRoute(rec); } catch (e) { /* best-effort */ }
+    if (state.route.gpxText && routeIdFor(state.route.fileName, state.route.gpxText) === id) {
+      state.route.displayName = trimmed || stripRouteExt(state.route.fileName);
+    }
+    updateSavedRoutesBlock();
+  }
+
+  function startEditRouteName() {
+    state.route.editingName = true;
+    state.route.nameDraft = state.route.displayName;
+    render();
+    requestAnimationFrame(() => { const el = document.getElementById('routeNameInput'); if (el) { el.focus(); el.select(); } });
+  }
+
+  function startEditSavedName(id) {
+    const rec = state.route.saved.find(r => r.id === id);
+    if (!rec) return;
+    state.route.editingSavedId = id;
+    state.route.nameDraft = routeDisplayName(rec);
+    updateSavedRoutesBlock();
+    requestAnimationFrame(() => { const el = document.getElementById('routeNameInput'); if (el) { el.focus(); el.select(); } });
   }
 
   async function runRouteAnalysis() {
@@ -1296,6 +1351,10 @@
       if (crossAbs >= 1) relParts.push(crossAbs + ' km/h cruzado');
       const relText = relParts.length ? relParts.join(' · ') : 'en calma';
       const relColor = !relParts.length ? 'var(--muted)' : seg.isHeadwind ? (L ? 'oklch(0.55 0.15 30)' : 'oklch(0.78 0.15 30)') : (L ? 'oklch(0.5 0.13 155)' : 'oklch(0.78 0.13 155)');
+      const uv = seg.weather && seg.weather.uvIndex != null ? Math.round(seg.weather.uvIndex) : null;
+      const uvStyle = uv != null ? uvScale(uv, L) : null;
+      const aqi = seg.aqi && seg.aqi.value != null ? Math.round(seg.aqi.value) : null;
+      const aqiStyle = aqi != null ? aqiScale(aqi, L) : null;
       return {
         n: seg.index + 1,
         kmRange: (seg.startDist / 1000).toFixed(1) + ' – ' + (seg.endDist / 1000).toFixed(1) + ' km',
@@ -1304,13 +1363,15 @@
         grade: (seg.gradeFraction * 100).toFixed(1) + '%',
         score: seg.score, scoreColor: ss.color, scoreBg: ss.bg, scoreBorder: ss.border,
         icon: wIcon(seg.weatherInput.weatherCode, true, 22, P),
-        temp: Math.round(seg.weatherInput.apparentTemperature) + '°',
+        temp: Math.round(seg.weatherInput.temperature) + '°',
+        feels: Math.round(seg.weatherInput.apparentTemperature) + '°',
         absWind: Math.round(seg.windSpeed || 0) + ' km/h', absGust: Math.round(seg.windGust || 0) + ' km/h',
         arrow: windArrow(seg.windDirection || 0, 12), dir: dirLabel(seg.windDirection || 0),
         relText, relColor,
         compassSvg: windCompassSvg(((seg.windDirection || 0) - seg.bearingDeg + 360) % 360, result.sport, relColor, 58),
         prob: Math.round(seg.weatherInput.precipitationProbability || 0),
-        probColor: probColor(seg.weatherInput.precipitationProbability || 0, L)
+        probColor: probColor(seg.weatherInput.precipitationProbability || 0, L),
+        uv, uvStyle, aqi, aqiStyle
       };
     });
 
@@ -1320,8 +1381,36 @@
       const idx = Math.round(rel / 45) % 8;
       windRoseBuckets[idx] += seg.durationSec;
     });
+
+    const maxUv = Math.round(result.maxUvIndex || 0);
+    const maxUvStyle = uvScale(maxUv, L);
+    const uvProtectionLabel = result.uvProtectionSeconds > 0 ? formatDuration(result.uvProtectionSeconds) : null;
+    const hasAqi = result.overallAqi != null;
+    const overallAqi = hasAqi ? Math.round(result.overallAqi) : null;
+    const aqiStyle = hasAqi ? aqiScale(overallAqi, L) : null;
+    let worstAqiKm = null, worstAqiValue = null, worstAqiStyle = null;
+    if (result.worstAqiSegment) {
+      const wa = result.worstAqiSegment;
+      worstAqiKm = (wa.startDist / 1000).toFixed(1) + ' – ' + (wa.endDist / 1000).toFixed(1);
+      worstAqiValue = Math.round(wa.aqi.value);
+      worstAqiStyle = aqiScale(worstAqiValue, L);
+    }
+
+    const pollenDefs = [
+      { key: 'grass_pollen', name: 'Gramíneas' }, { key: 'olive_pollen', name: 'Olivo' },
+      { key: 'birch_pollen', name: 'Abedul' }, { key: 'alder_pollen', name: 'Aliso' },
+      { key: 'mugwort_pollen', name: 'Artemisa' }, { key: 'ragweed_pollen', name: 'Ambrosía' }
+    ];
+    const pollen = pollenDefs
+      .map(p => (result.maxPollen && result.maxPollen[p.key] ? { name: p.name, v: result.maxPollen[p.key] } : null))
+      .filter(p => p && p.v > 0.5)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 4)
+      .map(p => { const t2 = pollenScale(p.v, L); return { name: p.name, value: Math.round(p.v), color: t2.color, bg: t2.bg, border: t2.border }; });
+
     return {
       L, P,
+      displayName: state.route.displayName || stripRouteExt(state.route.fileName),
       overallScore: result.overallScore, overallColor: overallStyle.color, overallBg: overallStyle.bg, overallBorder: overallStyle.border,
       overallGauge: scoreGauge(result.overallScore, overallStyle.color, P.grid, 'var(--muted)'),
       distanceLabel: result.totalDistKm.toFixed(1) + ' km',
@@ -1334,6 +1423,8 @@
       worstColor: worstStyle.color, worstBg: worstStyle.bg, worstBorder: worstStyle.border, worstNote,
       elevationSvg: elevationChart(result.points, result.segments, P, L),
       windRoseSvg: windRoseChart(windRoseBuckets, result.totalDurationSec, P, L),
+      maxUv, maxUvStyle, uvProtectionLabel,
+      hasAqi, overallAqi, aqiStyle, worstAqiKm, worstAqiValue, worstAqiStyle, pollen,
       segments
     };
   }
@@ -1357,17 +1448,29 @@
       const meta = [];
       if (r.distKm != null) meta.push(r.distKm.toFixed(1) + ' km');
       if (r.elevGain != null) meta.push('▲ ' + Math.round(r.elevGain) + 'm');
-      return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
-      <div class="clickable" data-action="pickSavedRoute" data-routeid="${esc(r.id)}" style="flex:1;display:flex;align-items:center;gap:9px;min-width:0">
-        <div style="flex:none;color:var(--muted);display:flex">${uiIcon('pin', 15)}</div>
-        <div style="display:flex;flex-direction:column;min-width:0;gap:5px">
-          <div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.fileName)}</div>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
-            ${meta.length ? `<div style="font-size:10.5px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">${meta.join(' · ')}</div>` : ''}
-            ${routeListScoreChipsHtml(r)}
-          </div>
-        </div>
-      </div>
+      const editing = state.route.editingSavedId === r.id;
+      const nameInput = `<input id="routeNameInput" type="text" value="${esc(state.route.nameDraft)}" maxlength="60" placeholder="Nombre de la ruta"
+          style="width:100%;padding:5px 8px;border-radius:10px;background:var(--btn);border:1px solid var(--now-border);color:var(--text);font-size:12.5px;font-weight:700;font-family:Manrope,Helvetica,sans-serif;outline:none">`;
+      const mainBlock = editing
+        ? `<div style="flex:1;display:flex;align-items:center;gap:9px;min-width:0">
+            <div style="flex:none;color:var(--muted);display:flex">${uiIcon('pin', 15)}</div>
+            <div style="flex:1;min-width:0">${nameInput}</div>
+          </div>`
+        : `<div class="clickable" data-action="pickSavedRoute" data-routeid="${esc(r.id)}" style="flex:1;display:flex;align-items:center;gap:9px;min-width:0">
+            <div style="flex:none;color:var(--muted);display:flex">${uiIcon('pin', 15)}</div>
+            <div style="display:flex;flex-direction:column;min-width:0;gap:5px">
+              <div style="display:flex;align-items:center;gap:4px;min-width:0">
+                <div style="min-width:0;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(routeDisplayName(r))}</div>
+                <div class="clickable" data-action="startEditSavedName" data-routeid="${esc(r.id)}" style="flex:none;padding:3px;display:flex;color:var(--muted)">${uiIcon('edit', 12)}</div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+                ${meta.length ? `<div style="font-size:10.5px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">${meta.join(' · ')}</div>` : ''}
+                ${routeListScoreChipsHtml(r)}
+              </div>
+            </div>
+          </div>`;
+      return `<div style="display:flex;align-items:center;gap:6px;padding:11px 14px;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
+      ${mainBlock}
       <div class="clickable" data-action="deleteSavedRoute" data-routeid="${esc(r.id)}" style="flex:none;padding:6px;display:flex;color:var(--muted)">${uiIcon('close', 15)}</div>
     </div>`;
     }).join('');
@@ -1499,6 +1602,33 @@
     </div>`;
   }
 
+  function routeUvCardTpl(v) {
+    const uvChip = `<div style="display:inline-flex;align-self:flex-start;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:${v.maxUvStyle.bg};border:1px solid ${v.maxUvStyle.border};color:${v.maxUvStyle.color};font-size:13px;font-weight:800;font-family:'IBM Plex Mono',monospace">${v.maxUv} · ${esc(v.maxUvStyle.label)}</div>`;
+    const uvText = v.uvProtectionLabel
+      ? `Protección solar recomendada ~${v.uvProtectionLabel} de la ruta.`
+      : 'Sin necesidad relevante de protección solar.';
+    return `<div style="flex:1;min-width:0;padding:14px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Índice UV</div>
+      ${uvChip}
+      <div style="font-size:11.5px;color:var(--text-soft);font-weight:500">${uvText}</div>
+    </div>`;
+  }
+
+  function routeAqiCardTpl(v) {
+    const pollenHtml = v.pollen.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">${v.pollen.map(p => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;background:${p.bg};border:1px solid ${p.border};font-size:10px;font-weight:700;color:${p.color}">${esc(p.name)} ${p.value}</div>`).join('')}</div>`
+      : '';
+    const body = v.hasAqi
+      ? `<div style="display:inline-flex;align-self:flex-start;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:${v.aqiStyle.bg};border:1px solid ${v.aqiStyle.border};color:${v.aqiStyle.color};font-size:13px;font-weight:800;font-family:'IBM Plex Mono',monospace">${v.overallAqi} · ${esc(v.aqiStyle.label)}</div>
+        <div style="font-size:11.5px;color:var(--text-soft);font-weight:500">${v.worstAqiValue != null && v.worstAqiValue > v.overallAqi + 10 ? `Peor en el km ${v.worstAqiKm} (AQI ${v.worstAqiValue}).` : 'Estable en toda la ruta.'}</div>
+        ${pollenHtml}`
+      : `<div style="font-size:11px;color:var(--muted);font-weight:600">No disponible para estas fechas (fuera de horizonte de previsión)</div>`;
+    return `<div style="flex:1;min-width:0;padding:14px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Calidad del aire</div>
+      ${body}
+    </div>`;
+  }
+
   function routeResultTpl(v) {
     const rows = v.segments.map(s => `<div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
@@ -1507,11 +1637,16 @@
         <div style="display:flex;align-items:center;gap:6px">
           <div style="display:flex">${s.icon}</div>
           <div style="font-size:11.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">${s.temp}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">ST ${s.feels}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px;color:var(--teal);font-size:10.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">
           <span style="display:flex">${s.arrow}</span>real: ${s.dir} – ${s.absWind} · r ${s.absGust}
         </div>
         <div style="font-size:10.5px;font-weight:700;color:${s.relColor};font-family:'IBM Plex Mono',monospace">relativo: ${s.relText}</div>
+        ${(s.uvStyle || s.aqiStyle) ? `<div style="display:flex;gap:5px;margin-top:1px">
+          ${s.uvStyle ? `<div style="padding:1px 7px;border-radius:99px;background:${s.uvStyle.bg};border:1px solid ${s.uvStyle.border};color:${s.uvStyle.color};font-size:9.5px;font-weight:800">UV ${s.uv}</div>` : ''}
+          ${s.aqiStyle ? `<div style="padding:1px 7px;border-radius:99px;background:${s.aqiStyle.bg};border:1px solid ${s.aqiStyle.border};color:${s.aqiStyle.color};font-size:9.5px;font-weight:800">AQI ${s.aqi}</div>` : ''}
+        </div>` : ''}
       </div>
       <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:8px">
         <div style="display:flex;align-items:center;padding:3px 10px;border-radius:99px;background:${s.scoreBg};border:1px solid ${s.scoreBorder}">
@@ -1526,6 +1661,14 @@
         <div class="pill-btn" data-action="backToRouteForm" style="padding:8px 13px 8px 10px">${uiIcon('back', 16)}Nueva ruta</div>
         <div class="section-label">Resultado</div>
         <div class="pill-btn" data-action="toggleRouteDirectionAndRecalc" style="margin-left:auto">↺ ${v.reversed ? 'Volver al original' : 'Invertir sentido'}</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        ${state.route.editingName
+          ? `<input id="routeNameInput" type="text" value="${esc(state.route.nameDraft)}" maxlength="60" placeholder="Nombre de la ruta"
+              style="flex:1;min-width:0;padding:6px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--now-border);color:var(--text);font-size:17px;font-weight:800;font-family:Manrope,Helvetica,sans-serif;outline:none">`
+          : `<div style="min-width:0;font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.displayName)}</div>
+             <div class="clickable" data-action="startEditRouteName" style="flex:none;padding:6px;display:flex;color:var(--muted)">${uiIcon('edit', 15)}</div>`}
       </div>
 
       <div style="padding:16px;border-radius:22px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
@@ -1552,6 +1695,8 @@
         </div>
         <div style="font-size:12.5px;color:var(--text-soft);font-weight:500">Sobre las ${v.worstArrival} · ${esc(v.worstNote)}</div>
       </div>
+
+      <div style="display:flex;gap:10px">${routeUvCardTpl(v)}${routeAqiCardTpl(v)}</div>
 
       ${scoreLegendCardTpl()}
 
@@ -1705,6 +1850,8 @@
     else if (action === 'runRouteAnalysis') runRouteAnalysis();
     else if (action === 'pickSavedRoute') pickSavedRoute(t.getAttribute('data-routeid'));
     else if (action === 'deleteSavedRoute') deleteSavedRoute(t.getAttribute('data-routeid'));
+    else if (action === 'startEditRouteName') startEditRouteName();
+    else if (action === 'startEditSavedName') startEditSavedName(t.getAttribute('data-routeid'));
   });
 
   document.addEventListener('change', e => {
@@ -1728,8 +1875,27 @@
         const [lo, hi] = ROUTE_PACE_BOUNDS.run;
         state.route.paceKmh = Math.max(lo, Math.min(hi, kmh));
       }
+    } else if (e.target.id === 'routeNameInput') {
+      state.route.nameDraft = e.target.value;
     } else return;
     scheduleRouteListScoreRefresh();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (!e.target || e.target.id !== 'routeNameInput') return;
+    if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+    else if (e.key === 'Escape') { nameEditEscaped = true; e.target.blur(); }
+  });
+  document.addEventListener('focusout', e => {
+    if (!e.target || e.target.id !== 'routeNameInput') return;
+    const cancelled = nameEditEscaped; nameEditEscaped = false;
+    if (state.route.editingName) {
+      state.route.editingName = false;
+      if (cancelled) render(); else renameCurrentRoute(state.route.nameDraft);
+    } else if (state.route.editingSavedId) {
+      const id = state.route.editingSavedId; state.route.editingSavedId = null;
+      if (cancelled) updateSavedRoutesBlock(); else renameSavedRoute(id, state.route.nameDraft);
+    }
   });
 
   applyTheme();

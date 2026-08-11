@@ -80,6 +80,12 @@ function tempChart(hs, P, light) {
       const cx = Math.min(Math.max(x(i), 13), W - 13);
       const label = n <= 9 ? v.toFixed(1) + '°' : Math.round(v) + '°';
       marks += `<text x="${cx.toFixed(1)}" y="${(y(v) + up).toFixed(1)}" fill="${P.warmText}" font-size="${n <= 9 ? 11 : 9.5}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${label}</text>`;
+      const diff = app[i] - v;
+      if (Math.abs(diff) > 2) { // solo si difiere lo bastante de la real, para no saturar el hueco entre líneas
+        const appUp = diff > 0 ? -8 : 14; // sensación por encima de la real -> etiqueta arriba; por debajo -> abajo
+        const appLabel = (n <= 9 ? app[i].toFixed(1) : Math.round(app[i])) + '°';
+        marks += `<text x="${cx.toFixed(1)}" y="${(y(app[i]) + appUp).toFixed(1)}" fill="${P.warmSoft}" font-size="${n <= 9 ? 9.5 : 8.5}" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${appLabel}</text>`;
+      }
     }
   });
   const inner = axisSvg(hs.map(h => h.hour), W, H, n, top - 12, null, P)
