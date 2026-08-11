@@ -1,4 +1,4 @@
-const CACHE = 'mianrube-tiempo-v39';
+const CACHE = 'mianrube-tiempo-v40';
 const SHELL = [
   './',
   './index.html',
@@ -13,7 +13,11 @@ const SHELL = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+  event.waitUntil(
+    caches.open(CACHE).then(cache =>
+      Promise.all(SHELL.map(url => fetch(url, { cache: 'reload' }).then(res => cache.put(url, res))))
+    )
+  );
   self.skipWaiting();
 });
 
