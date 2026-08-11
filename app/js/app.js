@@ -9,7 +9,7 @@
   const MAX_FAVORITES = 10;
 
   const state = {
-    loading: true, error: null, data: null,
+    loading: true, error: null, data: null, airQuality: null,
     place: null, region: null, lat: null, lon: null, fallback: false, source: null,
     theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48, dayLimit: 7,
     favorites: loadFavorites(),
@@ -86,7 +86,7 @@
   function cv(v) { return WIND_UNIT === 'm/s' ? v / 3.6 : v; }
 
   function load() {
-    state.loading = true; state.error = null; state.data = null;
+    state.loading = true; state.error = null; state.data = null; state.airQuality = null;
     render();
     if (!navigator.geolocation) return locateByIP();
     navigator.geolocation.getCurrentPosition(
@@ -125,6 +125,18 @@
     return fetchAll(DEFAULT_LAT, DEFAULT_LON, true, null, 'default');
   }
 
+  async function fetchAirQuality(lat, lon) {
+    try {
+      const u = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + lat + '&longitude=' + lon +
+        '&current=european_aqi,pm10,pm2_5' +
+        '&hourly=alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen' +
+        '&timezone=auto&forecast_days=1';
+      const r = await fetch(u);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; /* calidad del aire es best-effort */ }
+  }
+
   async function fetchAll(lat, lon, fallback, known, source) {
     try {
       const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
@@ -132,7 +144,7 @@
         '&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day,visibility,shortwave_radiation,uv_index' +
         '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max' +
         '&timezone=auto&forecast_days=14';
-      const r = await fetch(u);
+      const [r, airQuality] = await Promise.all([fetch(u), fetchAirQuality(lat, lon)]);
       if (!r.ok) throw new Error('Open-Meteo respondió ' + r.status);
       const data = await r.json();
       const src = source || (known ? 'known' : 'gps');
@@ -148,7 +160,7 @@
           }
         } catch (e) { /* geocoding is best-effort */ }
       }
-      Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, source: src, dayIdx: 0, hourLimit: 48, dayLimit: 7 });
+      Object.assign(state, { loading: false, error: null, data, airQuality, place, region, lat, lon, fallback, source: src, dayIdx: 0, hourLimit: 48, dayLimit: 7 });
       if (!known) Object.assign(state, { gpsPlace: place, gpsRegion: region, gpsFallback: fallback });
       if (src === 'gps' || src === 'ip' || src === 'known') saveLastLocation({ lat, lon, place, region });
       render();
@@ -282,6 +294,31 @@
     const probNow = H.precipitation_probability[i0] || 0;
     const sport = st.sport || 'bike';
     const sc = i => { const n = hourScore(sport, H, i, cv, L); return { n, s: scoreStyle100(n, L) }; };
+
+    let airQuality = null;
+    if (st.airQuality && st.airQuality.current && st.airQuality.current.european_aqi != null) {
+      const aqi = Math.round(st.airQuality.current.european_aqi);
+      const tier = aqiScale(aqi, L);
+      const HA = st.airQuality.hourly;
+      let pIdx = 0;
+      if (HA && HA.time) { pIdx = HA.time.findIndex(t => t.slice(0, 13) === nowKey); if (pIdx < 0) pIdx = 0; }
+      const pollenDefs = [
+        { key: 'grass_pollen', name: 'Gramíneas' }, { key: 'olive_pollen', name: 'Olivo' },
+        { key: 'birch_pollen', name: 'Abedul' }, { key: 'alder_pollen', name: 'Aliso' },
+        { key: 'mugwort_pollen', name: 'Artemisa' }, { key: 'ragweed_pollen', name: 'Ambrosía' }
+      ];
+      const pollen = pollenDefs
+        .map(p => (HA && HA[p.key] ? { name: p.name, v: HA[p.key][pIdx] } : null))
+        .filter(p => p && p.v > 0.5)
+        .sort((a, b) => b.v - a.v)
+        .slice(0, 4)
+        .map(p => { const t2 = pollenScale(p.v, L); return { name: p.name, value: Math.round(p.v), label: t2.label, color: t2.color, bg: t2.bg, border: t2.border }; });
+      airQuality = {
+        aqi, label: tier.label, color: tier.color, bg: tier.bg, border: tier.border,
+        pm25: Math.round(st.airQuality.current.pm2_5 || 0), pm10: Math.round(st.airQuality.current.pm10 || 0),
+        pollen
+      };
+    }
 
     const hours = idx.map(i => {
       const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0, q = sc(i);
@@ -466,6 +503,7 @@
       condition: info[0], bigIcon: wIcon(C.weather_code, isDay, 92, P),
       tmaxLabel: 'Máx ' + Math.round(D.temperature_2m_max[0]) + '°', tminLabel: 'Mín ' + Math.round(D.temperature_2m_min[0]) + '°',
       uv, uvLabel: uvS.label, uvColor: uvS.color, uvBg: uvS.bg, uvBorder: uvS.border,
+      airQuality,
       acts, act, sportChips, sportLabel,
       dayTabs, hourRows, dayLabel, hasMore: limit < total,
       moreLabel: 'Cargar ' + Math.min(48, total - limit) + ' h más · quedan ' + (total - limit),
@@ -566,6 +604,28 @@
       <div style="font-weight:700;font-size:15px">No se pudo cargar el tiempo</div>
       <div style="font-size:13px;color:var(--text-soft)">${esc(state.error)}</div>
       <div data-action="reload" style="align-self:flex-start;padding:9px 16px;border-radius:99px;background:var(--text);color:var(--bg2);font-weight:700;font-size:13px;cursor:pointer">Reintentar</div>
+    </div>`;
+  }
+
+  function airQualityCardTpl(aq) {
+    if (!aq) return '';
+    const pollen = aq.pollen.map(p => `<div style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;background:${p.bg};border:1px solid ${p.border}">
+      <div style="width:6px;height:6px;border-radius:99px;background:${p.color}"></div>
+      <div style="font-size:11px;font-weight:700;color:${p.color};font-family:'IBM Plex Mono',monospace">${esc(p.name)} · ${p.value} granos/m³</div>
+    </div>`).join('');
+    return `<div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+      <div class="section-label" style="padding-left:2px">Calidad del aire</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="display:flex;align-items:baseline;gap:4px;padding:6px 12px;border-radius:99px;background:${aq.bg};border:1px solid ${aq.border};font-family:'IBM Plex Mono',monospace;color:${aq.color}">
+          <div style="font-size:20px;font-weight:800;line-height:1">${aq.aqi}</div>
+          <div style="font-size:10px;font-weight:600;opacity:.75">AQI</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1px">
+          <div style="font-size:13px;font-weight:800;color:${aq.color}">${esc(aq.label)}</div>
+          <div style="font-size:11px;color:var(--muted);font-weight:500">PM2.5 ${aq.pm25} · PM10 ${aq.pm10} µg/m³</div>
+        </div>
+      </div>
+      ${aq.pollen.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${pollen}</div>` : `<div style="font-size:11.5px;color:var(--muted);font-weight:500">Sin polen relevante ahora mismo</div>`}
     </div>`;
   }
 
@@ -716,6 +776,8 @@
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
+
+      ${airQualityCardTpl(v.airQuality)}
 
       <div style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;gap:6px">${sportChipsTpl(v.sportChips, false)}</div>

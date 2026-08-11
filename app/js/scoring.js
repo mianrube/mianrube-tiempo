@@ -35,6 +35,28 @@ function uvScale(uv, light) {
   return { label, color: `oklch(0.82 ${c} ${h})`, bg: `oklch(0.42 ${c} ${h} / 0.2)`, border: `oklch(0.6 ${c} ${h} / 0.45)` };
 }
 
+function aqiScale(aqi, light) {
+  let label, h;
+  if (aqi <= 20) { label = 'Buena'; h = 145; }
+  else if (aqi <= 40) { label = 'Aceptable'; h = 95; }
+  else if (aqi <= 60) { label = 'Moderada'; h = 70; }
+  else if (aqi <= 80) { label = 'Mala'; h = 40; }
+  else if (aqi <= 100) { label = 'Muy mala'; h = 20; }
+  else { label = 'Extrema'; h = 320; }
+  if (light) return { label, color: `oklch(0.5 0.15 ${h})`, bg: `oklch(0.75 0.15 ${h} / 0.16)`, border: `oklch(0.7 0.15 ${h} / 0.5)` };
+  return { label, color: `oklch(0.82 0.15 ${h})`, bg: `oklch(0.42 0.15 ${h} / 0.2)`, border: `oklch(0.6 0.15 ${h} / 0.45)` };
+}
+
+function pollenScale(v, light) {
+  let label, h;
+  if (v < 10) { label = 'Bajo'; h = 145; }
+  else if (v < 50) { label = 'Moderado'; h = 85; }
+  else if (v < 150) { label = 'Alto'; h = 40; }
+  else { label = 'Muy alto'; h = 20; }
+  if (light) return { label, color: `oklch(0.5 0.13 ${h})`, bg: `oklch(0.75 0.13 ${h} / 0.16)`, border: `oklch(0.7 0.13 ${h} / 0.5)` };
+  return { label, color: `oklch(0.82 0.13 ${h})`, bg: `oklch(0.4 0.1 ${h} / 0.22)`, border: `oklch(0.6 0.11 ${h} / 0.45)` };
+}
+
 /* ---------- Outdoor Training Weather Score v2 ---------- */
 /* Portado de la especificación outdoor-training-weather-v2 (curvas, pesos, penalizaciones y hard caps). */
 

@@ -1,4 +1,4 @@
-const CACHE = 'mianrube-tiempo-v40';
+const CACHE = 'mianrube-tiempo-v42';
 const SHELL = [
   './',
   './index.html',
