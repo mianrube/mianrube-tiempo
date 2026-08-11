@@ -14,8 +14,10 @@
     theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48, dayLimit: 7,
     favorites: loadFavorites(),
     locationQuery: '', locationResultsRaw: [], locationResults: [], locSearching: false, locFavMsg: '', locSpainOnly: true,
-    gpsPlace: null, gpsRegion: null, gpsFallback: false
+    gpsPlace: null, gpsRegion: null, gpsFallback: false,
+    canInstall: false
   };
+  let deferredInstallPrompt = null;
 
   function loadFavorites() {
     try {
@@ -52,6 +54,26 @@
     window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
       if (!getStoredTheme()) { clearIconMemo(); applyTheme(); render(); }
     });
+  }
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    state.canInstall = true;
+    render();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    state.canInstall = false;
+    render();
+  });
+  async function installApp() {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    state.canInstall = false;
+    render();
   }
 
   function cv(v) { return WIND_UNIT === 'm/s' ? v / 3.6 : v; }
@@ -471,6 +493,7 @@
           <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ubicación actual</div>
         </div>
         <div style="display:flex;gap:8px;flex:none">
+          ${state.canInstall ? `<div class="btn-icon" data-action="installApp" title="Añadir a inicio">${uiIcon('install', 18)}</div>` : ''}
           <div class="btn-icon" data-action="toggleTheme">${themeIcon}</div>
           <div class="btn-icon" data-action="reload" style="${spin ? 'color:var(--text-soft)' : ''}"><span style="display:flex;${spin}">${uiIcon('refresh', 18)}</span></div>
         </div>
@@ -715,26 +738,22 @@
 
     const rows = v.hourRows.map(r => `<div>
       ${r.head ? `<div style="padding:7px 12px;background:var(--btn);border-top:1px solid var(--border);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--muted)">${esc(r.head)}</div>` : ''}
-      <div style="display:grid;grid-template-columns:42px 28px 1fr 54px 66px 30px;gap:6px;align-items:center;padding:9px 12px;border-top:1px solid var(--border);background:${r.bg}">
+      <div style="display:grid;grid-template-columns:34px 16px 1fr 34px 46px 34px 30px 20px;gap:6px;align-items:center;padding:9px 10px;border-top:1px solid var(--border);background:${r.bg}">
         <div style="display:flex;flex-direction:column">
-          <div style="font-size:13px;font-weight:800;font-family:'IBM Plex Mono',monospace">${r.hour}</div>
-          <div style="font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)">${r.now}</div>
+          <div style="font-size:12.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">${r.hour}</div>
+          <div style="font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)">${r.now}</div>
         </div>
         <div style="display:flex">${r.icon}</div>
         <div style="display:flex;flex-direction:column;min-width:0">
-          <div style="display:flex;align-items:baseline;gap:5px;font-family:'IBM Plex Mono',monospace">
-            <div style="font-size:15px;font-weight:800">${r.temp}°</div>
-            <div style="font-size:10.5px;font-weight:600;color:var(--warm)">${r.feels}°</div>
+          <div style="display:flex;align-items:baseline;gap:4px;font-family:'IBM Plex Mono',monospace">
+            <div style="font-size:14px;font-weight:800">${r.temp}°</div>
+            <div style="font-size:10px;font-weight:600;color:var(--warm)">${r.feels}°</div>
           </div>
-          <div style="font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
-          <div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">
-            <div style="font-size:11px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${r.uvColor};white-space:nowrap">UV ${r.uv}</div>
-            ${r.hum != null ? `<div style="display:flex;align-items:center;gap:3px;font-size:10px;font-weight:600;color:${r.humColor};font-family:'IBM Plex Mono',monospace;white-space:nowrap"><span style="display:flex">${uiIcon('humid', 13, r.humColor)}</span>${r.hum}%</div>` : ''}
-          </div>
+          <div style="font-size:9.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
         </div>
         <div style="display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace">
-          <div style="font-size:12px;font-weight:800;color:${r.probColor}">${r.prob}</div>
-          <div style="font-size:10px;font-weight:600;color:${r.mmColor}">${r.mm}</div>
+          <div style="font-size:11px;font-weight:800;color:${r.probColor}">${r.prob}</div>
+          <div style="font-size:9px;font-weight:600;color:${r.mmColor}">${r.mm}</div>
         </div>
         <div style="display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace">
           <div style="display:flex;align-items:center;gap:4px;color:var(--teal)">
@@ -743,6 +762,8 @@
           </div>
           <div style="font-size:10px;font-weight:600;color:var(--muted2)">r ${r.gust}</div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${r.uvColor};white-space:nowrap">UV ${r.uv}</div>
+        <div style="display:flex;align-items:center;gap:2px;font-size:10px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:${r.humColor};white-space:nowrap">${r.hum != null ? uiIcon('humid', 10, r.humColor) + r.hum + '%' : '—'}</div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:3px 0;border-radius:8px;background:${r.scoreBg};border:1px solid ${r.scoreBorder}">
           <div style="display:flex">${r.sportIcon}</div>
           <div style="font-size:12px;font-weight:800;color:${r.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${r.score}</div>
@@ -764,8 +785,8 @@
       <div style="display:flex;flex-direction:column;gap:9px">
         <div class="section-label" style="padding-left:2px">Detalle · ${esc(v.dayLabel)}</div>
         <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">
-          <div style="display:grid;grid-template-columns:42px 28px 1fr 54px 66px 30px;gap:6px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted2)">
-            <div>Hora</div><div></div><div>Temp / ST</div><div>Lluvia</div><div>Viento</div><div>Nota</div>
+          <div style="display:grid;grid-template-columns:34px 16px 1fr 34px 46px 34px 30px 20px;gap:6px;padding:9px 10px;border-bottom:1px solid var(--border);font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted2)">
+            <div>Hora</div><div></div><div>Temp / ST</div><div>Lluvia</div><div>Viento</div><div>UV</div><div>Hum</div><div>Nota</div>
           </div>
           ${rows}
         </div>
@@ -880,6 +901,7 @@
     const action = t.getAttribute('data-action');
     if (action === 'toggleTheme') toggleTheme();
     else if (action === 'reload') load();
+    else if (action === 'installApp') installApp();
     else if (action === 'openLocation') openLocation();
     else if (action === 'useGPS') useGPS();
     else if (action === 'pickResult') { const item = state.locationResults[Number(t.getAttribute('data-idx'))]; if (item) selectLocation(item); }
@@ -900,8 +922,21 @@
   load();
 
   if ('serviceWorker' in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+        setInterval(() => reg.update().catch(() => {}), 20 * 60 * 1000);
+      }).catch(() => {});
     });
   }
 })();

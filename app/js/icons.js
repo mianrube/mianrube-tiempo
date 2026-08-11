@@ -112,7 +112,8 @@ const UI_PATHS = {
   back: c => [`M15 5 8 12l7 7`],
   expand: c => [`M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9`, `M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15`, `M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9`, `M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15`],
   moonToggle: c => [`M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z`],
-  chevronDown: c => [`M6 9l6 6 6-6`]
+  chevronDown: c => [`M6 9l6 6 6-6`],
+  install: c => [`M12 3v10`, `M8 9l4 4 4-4`, `M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2`]
 };
 
 function uiIcon(name, size, color) {
