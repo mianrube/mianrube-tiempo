@@ -267,7 +267,7 @@ function buildDescription(status, factors, sportName) {
     case 'very_good': return `Muy buenas condiciones para ${sportName}. ${pos}${neg0 ? '. ' + neg0 : ''}.`;
     case 'good': return `Buenas condiciones para ${sportName}. ${pos}${neg0 ? ', aunque ' + lc(neg0) : ''}.`;
     case 'acceptable': return `Condiciones aceptables para ${sportName}. ${neg0 || pos}${neg1 ? '. ' + neg1 : ''}.`;
-    case 'regular': return `Condiciones regulares para ${sportName}. ${neg0}${neg1 ? ' y ' + lc(neg1) : ''} hacen que el entrenamiento resulte menos favorable.`;
+    case 'regular': return `Condiciones regulares para ${sportName}. ${neg0}${neg1 ? '. ' + neg1 : ''}. El entrenamiento resulta menos favorable en estas condiciones.`;
     case 'bad': return `Condiciones poco favorables para ${sportName}. ${neg0}${neg1 ? '. ' + neg1 : ''}. Conviene valorar una alternativa o ajustar el entrenamiento.`;
     case 'very_bad': return `Condiciones muy desfavorables para ${sportName}. ${neg0}${neg1 ? '. ' + neg1 : ''}. La salida no resulta recomendable en estas condiciones.`;
     default: return `Condiciones no recomendables para ${sportName}. ${neg0 || 'las condiciones actuales desaconsejan la salida'}. Se aconseja evitar la salida mientras se mantenga esta situación.`;
@@ -337,4 +337,11 @@ function probColor(pr, light) {
 }
 function mmColor(mm, light) {
   return mm > 0 ? (light ? 'oklch(0.52 0.12 250)' : 'oklch(0.72 0.11 250)') : 'var(--muted3)';
+}
+
+/* Color por velocidad de viento (km/h), verde=calma a rojo=fuerte. Pensado para marcar sobre mapa (fondo claro). */
+function windSpeedColor(kmh) {
+  const v = kmh || 0;
+  const hue = v < 8 ? 155 : v < 16 ? 110 : v < 25 ? 75 : v < 35 ? 45 : 20;
+  return 'oklch(0.56 0.17 ' + hue + ')';
 }

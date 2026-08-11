@@ -7,6 +7,7 @@
   const dayNames = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
   const MAX_FAVORITES = 10;
+  const MAX_SAVED_ROUTES = 10;
 
   const state = {
     loading: true, error: null, data: null, airQuality: null,
@@ -15,7 +16,12 @@
     favorites: loadFavorites(),
     locationQuery: '', locationResultsRaw: [], locationResults: [], locSearching: false, locFavMsg: '', locSpainOnly: true,
     gpsPlace: null, gpsRegion: null, gpsFallback: false,
-    canInstall: false
+    canInstall: false,
+    route: {
+      step: 'form', fileName: '', gpx: null, summary: null, error: null,
+      startTime: defaultRouteStartValue(), paceKmh: 30, sport: 'bike',
+      analyzing: false, result: null, saved: [], savedLoaded: false
+    }
   };
   let deferredInstallPrompt = null;
 
@@ -276,6 +282,205 @@
   function loadMore() { state.hourLimit = (state.hourLimit || 48) + 48; render(); }
   function loadMoreDays() { state.dayLimit = (state.dayLimit || 7) + 7; render(); }
   function pickSport(k) { state.sport = k; render(); }
+
+  /* ---------- análisis de ruta (GPX) ---------- */
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function toDatetimeLocalValue(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function defaultRouteStartValue() {
+    const d = new Date(Date.now() + 60 * 60000);
+    d.setMinutes(0, 0, 0);
+    return toDatetimeLocalValue(d);
+  }
+  function defaultRouteMinValue() { return toDatetimeLocalValue(new Date()); }
+  function defaultRouteMaxValue() { return toDatetimeLocalValue(new Date(Date.now() + 14 * 86400000)); }
+
+  const ROUTE_DB_NAME = 'mianrube-routes', ROUTE_DB_VERSION = 1, ROUTE_STORE = 'routes';
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(ROUTE_DB_NAME, ROUTE_DB_VERSION);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains(ROUTE_STORE)) {
+          req.result.createObjectStore(ROUTE_STORE, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbSaveRoute(record) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(ROUTE_STORE, 'readwrite');
+      tx.objectStore(ROUTE_STORE).put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function idbListRoutes() {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(ROUTE_STORE, 'readonly');
+      const req = tx.objectStore(ROUTE_STORE).getAll();
+      req.onsuccess = () => resolve((req.result || []).sort((a, b) => b.addedAt - a.addedAt));
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbDeleteRoute(id) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(ROUTE_STORE, 'readwrite');
+      tx.objectStore(ROUTE_STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function backfillRouteMeta(record) {
+    try {
+      const gpx = parseRouteFile(record.gpxText, record.fileName);
+      const pts = gpx.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele }));
+      enrichWithDistanceAndBearing(pts);
+      record.distKm = pts[pts.length - 1].dist / 1000;
+      if (hasElevation(pts)) { fillMissingElevation(pts); record.elevGain = elevationGainLoss(pts, 5).gain; }
+      else record.elevGain = null;
+      await idbSaveRoute(record);
+    } catch (e) { /* best-effort: si el registro está corrupto lo dejamos sin metadatos */ }
+    return record;
+  }
+  async function loadSavedRoutes() {
+    try { state.route.saved = await idbListRoutes(); } catch (e) { state.route.saved = []; }
+    state.route.savedLoaded = true;
+    updateSavedRoutesBlock();
+    const missing = state.route.saved.filter(r => r.distKm == null);
+    if (missing.length) {
+      await Promise.all(missing.map(backfillRouteMeta));
+      updateSavedRoutesBlock();
+    }
+  }
+  function updateSavedRoutesBlock() {
+    const el = document.getElementById('routeSavedBlock');
+    if (el) el.innerHTML = savedRoutesSectionHtml();
+  }
+  function savedRoutesSectionHtml() {
+    return `<div class="section-label" style="padding-left:2px">Mis rutas (${(state.route.saved || []).length}/${MAX_SAVED_ROUTES})</div>
+      ${savedRoutesBlockHtml()}`;
+  }
+
+  function openRoute() {
+    state.view = 'route';
+    state.route.step = 'form'; state.route.error = null;
+    render();
+    window.scrollTo(0, 0);
+    if (!state.route.savedLoaded) loadSavedRoutes();
+  }
+  function backToRouteForm() { state.route.step = 'form'; state.route.result = null; render(); window.scrollTo(0, 0); }
+  const ROUTE_PACE_DEFAULTS = { bike: 30, run: 12 }; // run: 12 km/h ≈ 5:00/km
+  const ROUTE_PACE_BOUNDS = { bike: [8, 45], run: [5, 25] };
+  function parsePaceToKmh(str) {
+    const s = (str || '').trim();
+    let minutes = null;
+    const m = s.match(/^(\d{1,2}):([0-5]?\d)$/);
+    if (m) minutes = parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+    else if (/^\d+(\.\d+)?$/.test(s)) minutes = parseFloat(s);
+    if (!minutes || minutes <= 0) return null;
+    return 60 / minutes;
+  }
+  function formatKmhToPace(kmh) {
+    if (!kmh || !isFinite(kmh)) return '';
+    const totalSec = Math.round(3600 / kmh);
+    return Math.floor(totalSec / 60) + ':' + pad2(totalSec % 60);
+  }
+  function adjustRoutePace(delta) {
+    const [lo, hi] = ROUTE_PACE_BOUNDS.bike;
+    state.route.paceKmh = Math.max(lo, Math.min(hi, state.route.paceKmh + delta));
+    render();
+  }
+  function pickRouteSport(k) {
+    state.route.sport = k;
+    state.route.paceKmh = ROUTE_PACE_DEFAULTS[k];
+    render();
+  }
+
+  function loadGpxFromText(text, fileName) {
+    try {
+      const gpx = parseRouteFile(text, fileName);
+      const pts = gpx.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele }));
+      enrichWithDistanceAndBearing(pts);
+      const distKm = pts[pts.length - 1].dist / 1000;
+      let gainLoss = { gain: null, loss: null };
+      if (hasElevation(pts)) { fillMissingElevation(pts); gainLoss = elevationGainLoss(pts, 5); }
+      state.route.gpx = gpx;
+      state.route.gpxText = text;
+      state.route.fileName = fileName || gpx.name || 'ruta.gpx';
+      state.route.summary = { distKm, points: pts.length, gain: gainLoss.gain, loss: gainLoss.loss, hasEle: hasElevation(pts) };
+      state.route.error = null;
+    } catch (e) {
+      state.route.gpx = null; state.route.gpxText = null; state.route.summary = null;
+      state.route.error = e.message || 'No se pudo leer el archivo de ruta';
+    }
+    render();
+  }
+  function handleRouteFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => loadGpxFromText(String(reader.result), file.name);
+    reader.onerror = () => { state.route.error = 'No se pudo leer el archivo'; render(); };
+    reader.readAsText(file);
+  }
+  function pickSavedRoute(id) {
+    const rec = state.route.saved.find(r => r.id === id);
+    if (rec) loadGpxFromText(rec.gpxText, rec.fileName);
+  }
+  async function deleteSavedRoute(id) {
+    try { await idbDeleteRoute(id); } catch (e) { /* best-effort */ }
+    state.route.saved = state.route.saved.filter(r => r.id !== id);
+    updateSavedRoutesBlock();
+  }
+  async function persistCurrentRoute() {
+    if (!state.route.gpxText) return;
+    const id = state.route.fileName + '::' + state.route.gpxText.length;
+    const exists = state.route.saved.some(r => r.id === id);
+    if (exists) return;
+    const res = state.route.result;
+    const record = {
+      id, fileName: state.route.fileName, gpxText: state.route.gpxText, addedAt: Date.now(),
+      distKm: res ? res.totalDistKm : (state.route.summary ? state.route.summary.distKm : null),
+      elevGain: res ? res.elevationGain : (state.route.summary ? state.route.summary.gain : null)
+    };
+    try {
+      await idbSaveRoute(record);
+      state.route.saved = [record, ...state.route.saved];
+      updateSavedRoutesBlock();
+      if (state.route.saved.length > MAX_SAVED_ROUTES) {
+        const overflow = state.route.saved.slice(MAX_SAVED_ROUTES);
+        state.route.saved = state.route.saved.slice(0, MAX_SAVED_ROUTES);
+        updateSavedRoutesBlock();
+        overflow.forEach(r => idbDeleteRoute(r.id).catch(() => {}));
+      }
+    } catch (e) { /* best-effort: sin espacio o navegador sin IndexedDB */ }
+  }
+
+  async function runRouteAnalysis() {
+    if (!state.route.gpx || state.route.analyzing) return;
+    state.route.step = 'analyzing'; state.route.analyzing = true; state.route.error = null;
+    render();
+    try {
+      const startTime = new Date(state.route.startTime);
+      if (isNaN(startTime.getTime())) throw new Error('Indica una hora de salida válida');
+      const result = await analyzeRoute(state.route.gpx, { sport: state.route.sport, paceKmh: state.route.paceKmh, startTime });
+      state.route.result = result;
+      state.route.step = 'result'; state.route.analyzing = false;
+      render();
+      window.scrollTo(0, 0);
+      persistCurrentRoute();
+    } catch (e) {
+      state.route.step = 'form'; state.route.analyzing = false;
+      state.route.error = (e && e.message) || 'No se pudo analizar la ruta';
+      render();
+    }
+  }
 
   /* ---------- derived data ---------- */
 
@@ -784,6 +989,15 @@
         ${actCardTpl(v.act)}
       </div>
 
+      <div class="clickable" data-action="openRoute" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:18px;background:var(--surface);border:1px solid var(--border)">
+        <div style="flex:none;color:var(--live);display:flex">${uiIcon('route', 20)}</div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;gap:1px">
+          <div style="font-size:13.5px;font-weight:800">Analiza tu ruta</div>
+          <div style="font-size:11px;color:var(--muted);font-weight:500">Sube el track (GPX o TCX) y valora el tiempo tramo a tramo, con mapa y altimetría</div>
+        </div>
+        <div style="margin-left:auto;flex:none;color:var(--muted);display:flex;transform:rotate(-90deg)">${uiIcon('chevronDown', 16)}</div>
+      </div>
+
       <div style="display:flex;flex-direction:column;gap:9px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
           <div class="section-label">Próximas horas</div>
@@ -986,12 +1200,364 @@
     </div>`;
   }
 
+  /* ---------- vista: análisis de ruta ---------- */
+
+  function formatClock(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function formatDuration(sec) {
+    const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    return (h > 0 ? h + 'h ' : '') + m + 'min';
+  }
+
+  function computeRouteResultView(result) {
+    const L = currentTheme() === 'light', P = palette(L);
+    const sportName = result.sport === 'bike' ? 'la bici' : 'correr';
+    const overallStyle = scoreStyle100(result.overallScore, L);
+    const w = result.worstSegment;
+    const worstFactors = pickFactors(result.sport, w.weatherInput, w.scoreResult.components, w.scoreResult.penalties);
+    const worstNote = buildDescription(scoreTier(w.score).status, worstFactors, sportName);
+    const worstStyle = scoreStyle100(w.score, L);
+
+    const segments = result.segments.map(seg => {
+      const ss = scoreStyle100(seg.score, L);
+      const windAbs = Math.round(Math.abs(seg.headwindKmh));
+      const crossAbs = Math.round(seg.crosswindKmh);
+      const relParts = [];
+      if (windAbs >= 1) relParts.push(windAbs + ' km/h ' + (seg.isHeadwind ? 'de cara' : 'a favor'));
+      if (crossAbs >= 1) relParts.push(crossAbs + ' km/h cruzado');
+      const relText = relParts.length ? relParts.join(' · ') : 'en calma';
+      const relColor = !relParts.length ? 'var(--muted)' : seg.isHeadwind ? (L ? 'oklch(0.55 0.15 30)' : 'oklch(0.78 0.15 30)') : (L ? 'oklch(0.5 0.13 155)' : 'oklch(0.78 0.13 155)');
+      return {
+        n: seg.index + 1,
+        kmRange: (seg.startDist / 1000).toFixed(1) + ' – ' + (seg.endDist / 1000).toFixed(1) + ' km',
+        arrival: formatClock(seg.arrival),
+        speed: Math.round(seg.speedKmh) + ' km/h',
+        grade: (seg.gradeFraction * 100).toFixed(1) + '%',
+        score: seg.score, scoreColor: ss.color, scoreBg: ss.bg, scoreBorder: ss.border,
+        icon: wIcon(seg.weatherInput.weatherCode, true, 22, P),
+        temp: Math.round(seg.weatherInput.apparentTemperature) + '°',
+        absWind: Math.round(seg.windSpeed || 0) + ' km/h', absGust: Math.round(seg.windGust || 0) + ' km/h',
+        arrow: windArrow(seg.windDirection || 0, 12), dir: dirLabel(seg.windDirection || 0),
+        relText, relColor,
+        compassSvg: windCompassSvg(seg.windDirection || 0, result.sport, relColor, 58),
+        prob: Math.round(seg.weatherInput.precipitationProbability || 0),
+        probColor: probColor(seg.weatherInput.precipitationProbability || 0, L)
+      };
+    });
+
+    return {
+      L, P,
+      overallScore: result.overallScore, overallColor: overallStyle.color, overallBg: overallStyle.bg, overallBorder: overallStyle.border,
+      overallGauge: scoreGauge(result.overallScore, overallStyle.color, P.grid, 'var(--muted)'),
+      distanceLabel: result.totalDistKm.toFixed(1) + ' km',
+      durationLabel: formatDuration(result.totalDurationSec),
+      startLabel: formatClock(result.startTime), arrivalLabel: formatClock(result.arrivalTime),
+      elevGain: result.elevationGain, elevLoss: result.elevationLoss,
+      paceKmh: result.paceKmh, sportName,
+      worstN: w.index + 1, worstKm: (w.startDist / 1000).toFixed(1) + ' – ' + (w.endDist / 1000).toFixed(1),
+      worstArrival: formatClock(w.arrival), worstScore: w.score,
+      worstColor: worstStyle.color, worstBg: worstStyle.bg, worstBorder: worstStyle.border, worstNote,
+      elevationSvg: elevationChart(result.points, result.segments, P, L),
+      segments
+    };
+  }
+
+  function routeSummaryChips(s) {
+    if (!s) return '';
+    const eleText = s.hasEle ? (s.gain != null ? '+' + s.gain + 'm / −' + s.loss + 'm' : '—') : 'sin elevación en el GPX (se calculará)';
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px">
+      <div style="padding:6px 12px;border-radius:99px;background:var(--btn);font-size:11.5px;font-weight:700">${s.distKm.toFixed(1)} km</div>
+      <div style="padding:6px 12px;border-radius:99px;background:var(--btn);font-size:11.5px;font-weight:700">${s.points} puntos</div>
+      <div style="padding:6px 12px;border-radius:99px;background:var(--btn);font-size:11.5px;font-weight:700">${esc(eleText)}</div>
+    </div>`;
+  }
+
+  function savedRoutesBlockHtml() {
+    const list = state.route.saved || [];
+    if (!state.route.savedLoaded) return `<div style="font-size:11.5px;color:var(--muted);font-weight:600;padding:4px 2px">Cargando rutas guardadas…</div>`;
+    if (!list.length) return `<div style="font-size:11.5px;color:var(--muted);font-weight:600;padding:4px 2px">Aún no tienes rutas guardadas. Se guardan automáticamente al analizarlas.</div>`;
+    const rows = list.map((r, i) => {
+      const meta = [];
+      if (r.distKm != null) meta.push(r.distKm.toFixed(1) + ' km');
+      if (r.elevGain != null) meta.push('▲ ' + Math.round(r.elevGain) + 'm');
+      return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
+      <div class="clickable" data-action="pickSavedRoute" data-routeid="${esc(r.id)}" style="flex:1;display:flex;align-items:center;gap:9px;min-width:0">
+        <div style="flex:none;color:var(--muted);display:flex">${uiIcon('pin', 15)}</div>
+        <div style="display:flex;flex-direction:column;min-width:0;gap:1px">
+          <div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.fileName)}</div>
+          ${meta.length ? `<div style="font-size:10.5px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">${meta.join(' · ')}</div>` : ''}
+        </div>
+      </div>
+      <div class="clickable" data-action="deleteSavedRoute" data-routeid="${esc(r.id)}" style="flex:none;padding:6px;display:flex;color:var(--muted)">${uiIcon('close', 15)}</div>
+    </div>`;
+    }).join('');
+    return `<div style="border-radius:18px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>`;
+  }
+
+  function routeFormTpl() {
+    const r = state.route;
+    const sportChips = [{ k: 'bike', label: 'Bici', ic: 'bike' }, { k: 'run', label: 'Correr', ic: 'run' }].map(o => ({
+      k: o.k, label: o.label,
+      icon: uiIcon(o.ic, 14, r.sport === o.k ? 'var(--text)' : 'var(--muted)'),
+      bg: r.sport === o.k ? 'var(--now-bg)' : 'transparent',
+      border: r.sport === o.k ? 'var(--now-border)' : 'var(--border)',
+      color: r.sport === o.k ? 'var(--text)' : 'var(--muted)'
+    }));
+    const canAnalyze = !!r.gpx;
+    return `<div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="pill-btn" data-action="backToMain" style="padding:8px 13px 8px 10px">${uiIcon('back', 16)}Volver</div>
+        <div class="section-label">Analiza tu ruta</div>
+      </div>
+
+      ${r.error ? `<div style="padding:14px 16px;border-radius:18px;background:var(--err-bg);border:1px solid var(--err-border);font-size:12.5px;font-weight:600">${esc(r.error)}</div>` : ''}
+
+      <label style="position:relative;display:flex;align-items:center;gap:12px;padding:16px;border-radius:18px;background:var(--surface);border:1px dashed var(--border);cursor:pointer">
+        <div style="flex:none;color:var(--live);display:flex">${uiIcon('upload', 22)}</div>
+        <div style="display:flex;flex-direction:column;min-width:0;gap:2px">
+          <div style="font-size:13px;font-weight:800">${r.fileName ? esc(r.fileName) : 'Selecciona un archivo GPX o TCX'}</div>
+          <div style="font-size:11px;color:var(--muted);font-weight:500">Toca para elegir el track de tu ruta (.gpx o .tcx)</div>
+        </div>
+        <input id="routeFileInput" type="file" accept=".gpx,.tcx" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden">
+      </label>
+
+      ${routeSummaryChips(r.summary)}
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div class="section-label" style="padding-left:2px">Deporte</div>
+        <div style="display:flex;gap:6px">${sportChipsTplRoute(sportChips)}</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div class="section-label" style="padding-left:2px">Hora de salida</div>
+        <div style="display:flex;gap:8px">
+          <input id="routeStartDateInput" type="date" value="${esc(r.startTime.slice(0, 10))}" min="${esc(defaultRouteMinValue().slice(0, 10))}" max="${esc(defaultRouteMaxValue().slice(0, 10))}"
+            style="flex:1.3;min-width:0;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;font-family:'IBM Plex Mono',monospace;outline:none">
+          <input id="routeStartTimeInput" type="time" value="${esc(r.startTime.slice(11, 16))}"
+            style="flex:1;min-width:0;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;font-family:'IBM Plex Mono',monospace;outline:none">
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);font-weight:500;padding-left:2px">La previsión horaria solo llega a 14 días vista</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div class="section-label" style="padding-left:2px">Ritmo estimado en llano</div>
+        ${r.sport === 'run' ? `
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+          <input id="routePaceMinKmInput" type="text" inputmode="numeric" placeholder="5:00" value="${esc(formatKmhToPace(r.paceKmh))}"
+            style="width:64px;background:transparent;border:none;color:var(--text);font-size:20px;font-weight:800;font-family:'IBM Plex Mono',monospace;outline:none">
+          <div style="font-size:13px;font-weight:700;color:var(--muted)">min/km</div>
+        </div>` : `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+          <div class="clickable" data-action="adjustRoutePace" data-delta="-1" style="flex:none;width:30px;height:30px;border-radius:99px;background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--text)">−</div>
+          <input id="routePaceInput" type="number" min="${ROUTE_PACE_BOUNDS.bike[0]}" max="${ROUTE_PACE_BOUNDS.bike[1]}" step="1" value="${r.paceKmh}"
+            style="flex:1;min-width:0;text-align:center;background:transparent;border:none;color:var(--text);font-size:20px;font-weight:800;font-family:'IBM Plex Mono',monospace;outline:none">
+          <div class="clickable" data-action="adjustRoutePace" data-delta="1" style="flex:none;width:30px;height:30px;border-radius:99px;background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--text)">+</div>
+          <div style="flex:none;font-size:13px;font-weight:700;color:var(--muted)">km/h</div>
+        </div>`}
+      </div>
+
+      <div class="clickable" data-action="runRouteAnalysis" style="align-self:stretch;text-align:center;padding:14px;border-radius:16px;background:${canAnalyze ? 'var(--text)' : 'var(--btn)'};color:${canAnalyze ? 'var(--bg2)' : 'var(--muted)'};font-weight:800;font-size:14px">Analizar ruta</div>
+
+      <div id="routeSavedBlock" style="display:flex;flex-direction:column;gap:9px">${savedRoutesSectionHtml()}</div>
+    </div>`;
+  }
+
+  function sportChipsTplRoute(chips) {
+    return chips.map(s => `<div class="clickable" data-action="pickRouteSport" data-sport="${s.k}" style="display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:99px;background:${s.bg};border:1px solid ${s.border};color:${s.color};font-size:12px;font-weight:800">
+      <div style="display:flex">${s.icon}</div>${esc(s.label)}
+    </div>`).join('');
+  }
+
+  function routeAnalyzingTpl() {
+    return `<div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="section-label">Analizando ruta…</div>
+      </div>
+      <div class="skeleton" style="height:150px;border-radius:20px"></div>
+      <div class="skeleton" style="height:200px;border-radius:20px"></div>
+      <div class="skeleton" style="height:260px;border-radius:20px"></div>
+    </div>`;
+  }
+
+  function scoreLegendCardTpl() {
+    const ordered = SCORE_TIERS.slice().sort((a, b) => a.min - b.min);
+    const chips = ordered.map(t => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="width:100%;height:7px;border-radius:99px;background:oklch(0.7 0.15 ${t.hue})"></div>
+      <div style="font-size:7.8px;font-weight:700;color:var(--muted);text-align:center;line-height:1.15;white-space:nowrap">${esc(t.label)}</div>
+    </div>`).join('');
+    return `<div style="padding:13px 14px;border-radius:18px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:800;padding:0 2px">Escala de puntuación (mapa y altimetría)</div>
+      <div style="display:flex;gap:4px">${chips}</div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;font-weight:700;color:var(--muted2);font-family:'IBM Plex Mono',monospace;padding:0 2px">
+        <div>0 · evitar</div><div>100 · excelente</div>
+      </div>
+    </div>`;
+  }
+
+  function routeLegendNoteTpl() {
+    return `<div style="padding:11px 13px;border-radius:16px;background:var(--btn);display:flex;flex-direction:column;gap:4px">
+      <div style="font-size:10.5px;font-weight:700;color:var(--text-soft)">🧭 <b>Viento real</b>: el medido en ese punto y hora, con su racha.</div>
+      <div style="font-size:10.5px;font-weight:700;color:var(--text-soft)">🚴 <b>Viento relativo</b>: cuánto te afecta según tu rumbo — de cara pesa más, de cola menos. El pétalo grande de la rueda marca de dónde sopla.</div>
+    </div>`;
+  }
+
+  function routeResultTpl(v) {
+    const rows = v.segments.map(s => `<div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+        <div style="font-size:11.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">Tramo ${s.n} · ${s.kmRange}</div>
+        <div style="font-size:10px;font-weight:600;color:var(--muted)">${s.arrival} · ${s.speed} · pend. ${s.grade} · lluvia <span style="color:${s.probColor}">${s.prob}%</span></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="display:flex">${s.icon}</div>
+          <div style="font-size:11.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">${s.temp}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;color:var(--teal);font-size:10.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">
+          <span style="display:flex">${s.arrow}</span>real: ${s.dir} ${s.absWind} · r ${s.absGust}
+        </div>
+        <div style="font-size:10.5px;font-weight:700;color:${s.relColor};font-family:'IBM Plex Mono',monospace">relativo: ${s.relText}</div>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;padding:3px 10px;border-radius:99px;background:${s.scoreBg};border:1px solid ${s.scoreBorder}">
+          <div style="font-size:13px;font-weight:800;color:${s.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${s.score}</div>
+        </div>
+        <div>${s.compassSvg}</div>
+      </div>
+    </div>`).join('');
+
+    return `<div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="pill-btn" data-action="backToRouteForm" style="padding:8px 13px 8px 10px">${uiIcon('back', 16)}Nueva ruta</div>
+        <div class="section-label">Resultado</div>
+      </div>
+
+      <div style="padding:16px;border-radius:22px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="flex:none;width:150px">${v.overallGauge}</div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <div style="font-size:12px;font-weight:700;color:var(--muted)">Nota global · ponderada por tiempo</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace">
+              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.distanceLabel}</div>
+              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.durationLabel}</div>
+              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.startLabel}→${v.arrivalLabel}</div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--muted)">
+              <div>▲ ${v.elevGain}m</div><div>▼ ${v.elevLoss}m</div><div>ritmo base ${v.paceKmh} km/h</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:14px 16px;border-radius:20px;background:${v.worstBg};border:1px solid ${v.worstBorder};display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${v.worstColor}">Tramo más duro · km ${v.worstKm}</div>
+          <div style="font-size:15px;font-weight:800;color:${v.worstColor};font-family:'IBM Plex Mono',monospace">${v.worstScore}/100</div>
+        </div>
+        <div style="font-size:12.5px;color:var(--text-soft);font-weight:500">Sobre las ${v.worstArrival} · ${esc(v.worstNote)}</div>
+      </div>
+
+      ${scoreLegendCardTpl()}
+
+      <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:12px;font-weight:800;padding:0 2px">Altimetría y puntuación por tramo</div>
+        <div>${v.elevationSvg}</div>
+      </div>
+
+      <div style="border-radius:20px;overflow:hidden;border:1px solid var(--border)">
+        <div id="routeMap" style="height:320px;background:var(--surface)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-weight:600;padding:0 4px;text-align:center">Las flechas muestran de dónde sopla el viento real en cada tramo</div>
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div class="section-label" style="padding-left:2px">Detalle por tramos</div>
+        ${routeLegendNoteTpl()}
+        <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>
+      </div>
+
+      <div style="text-align:center;font-size:10px;color:var(--muted3);font-weight:600;letter-spacing:.04em;padding:0 10px">Estimación a partir de tu ritmo y la previsión meteorológica: las horas de paso y las condiciones reales pueden variar</div>
+    </div>`;
+  }
+
+  let leafletLoadPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletLoadPromise) return leafletLoadPromise;
+    leafletLoadPromise = new Promise((resolve, reject) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet'; link.href = 'vendor/leaflet/leaflet.css';
+      document.head.appendChild(link);
+      const script = document.createElement('script');
+      script.src = 'vendor/leaflet/leaflet.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('No se pudo cargar el mapa'));
+      document.body.appendChild(script);
+    });
+    return leafletLoadPromise;
+  }
+
+  let routeMapInstance = null;
+  async function initRouteMap(result) {
+    const container = document.getElementById('routeMap');
+    if (!container) return;
+    try { await loadLeaflet(); } catch (e) {
+      container.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--muted);font-weight:600">No se pudo cargar el mapa (sin conexión)</div>';
+      return;
+    }
+    if (!document.getElementById('routeMap')) return; // la vista pudo cambiar mientras cargaba Leaflet
+    if (routeMapInstance) { routeMapInstance.remove(); routeMapInstance = null; }
+    const Lf = window.L;
+    const map = Lf.map(container, { attributionControl: true, zoomControl: true });
+    Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+    const bounds = [];
+    result.segments.forEach(seg => {
+      let segPoints = result.points.filter(p => p.dist >= seg.startDist && p.dist <= seg.endDist);
+      if (segPoints.length > 60) {
+        const keep = simplifyIndices(segPoints, 6); // ~6m de tolerancia, tracks largos no saturan el mapa
+        segPoints = keep.map(i => segPoints[i]);
+      }
+      const segPts = segPoints.map(p => [p.lat, p.lon]);
+      if (segPts.length < 2) return;
+      const hue = scoreHue100(seg.score);
+      const color = 'oklch(0.62 0.17 ' + hue + ')';
+      const line = Lf.polyline(segPts, { color, weight: 5, opacity: 0.9 }).addTo(map);
+      line.bindPopup('Tramo ' + (seg.index + 1) + ' · ' + seg.score + '/100<br>' + formatClock(seg.arrival) + ' · ' + Math.round(seg.speedKmh) + ' km/h');
+      segPts.forEach(p => bounds.push(p));
+
+      const arrowHtml = '<div style="display:flex;filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) drop-shadow(0 1px 2px rgba(0,0,0,.4))">' + windArrow(seg.windDirection || 0, 19, windSpeedColor(seg.windSpeed)) + '</div>';
+      const windIcon = Lf.divIcon({ html: arrowHtml, className: '', iconSize: [19, 19], iconAnchor: [9, 9] });
+      Lf.marker([seg.midLat, seg.midLon], { icon: windIcon, interactive: true, keyboard: false })
+        .addTo(map)
+        .bindPopup('Viento real: ' + dirLabel(seg.windDirection || 0) + ' ' + Math.round(seg.windSpeed || 0) + ' km/h · racha ' + Math.round(seg.windGust || 0) + ' km/h');
+
+      if (seg.index < result.segments.length - 1) {
+        const cut = pointAtDistance(result.points, seg.endDist);
+        const angle = (seg.bearingDeg + 90) % 360;
+        const tickHtml = '<svg width="28" height="18" viewBox="0 0 28 18">'
+          + '<line x1="9" y1="5.5" x2="9" y2="12.5" stroke="#1a1f26" stroke-width="1.3" stroke-linecap="round" transform="rotate(' + angle.toFixed(0) + ' 9 9)"/>'
+          + '<text x="16" y="12" font-size="9.5" font-weight="800" fill="#1a1f26" font-family="\'IBM Plex Mono\',monospace" style="paint-order:stroke;stroke:#fff;stroke-width:2.5px;stroke-linejoin:round">' + (seg.index + 2) + '</text>'
+          + '</svg>';
+        const tickIcon = Lf.divIcon({ html: tickHtml, className: '', iconSize: [28, 18], iconAnchor: [9, 9] });
+        Lf.marker([cut.lat, cut.lon], { icon: tickIcon, interactive: false, keyboard: false }).addTo(map);
+      }
+    });
+
+    if (bounds.length) map.fitBounds(bounds, { padding: [18, 18] });
+    const start = result.points[0], end = result.points[result.points.length - 1];
+    Lf.circleMarker([start.lat, start.lon], { radius: 6, color: '#1a7f37', fillColor: '#1a7f37', fillOpacity: 1 }).addTo(map).bindPopup('Salida');
+    Lf.circleMarker([end.lat, end.lon], { radius: 6, color: '#b91c1c', fillColor: '#b91c1c', fillOpacity: 1 }).addTo(map).bindPopup('Llegada');
+    routeMapInstance = map;
+  }
+
+  function routeViewTpl() {
+    if (state.route.step === 'analyzing') return routeAnalyzingTpl();
+    if (state.route.step === 'result' && state.route.result) return routeResultTpl(computeRouteResultView(state.route.result));
+    return routeFormTpl();
+  }
+
   /* ---------- render ---------- */
 
   function render() {
     applyTheme();
     let body;
-    if (state.loading) body = loadingTpl();
+    if (state.view === 'route') body = routeViewTpl();
+    else if (state.loading) body = loadingTpl();
     else if (state.error) body = errorTpl();
     else if (state.view === 'location') body = locationViewTpl();
     else if (state.data) {
@@ -1000,6 +1566,10 @@
     } else body = '';
 
     document.getElementById('app').innerHTML = `<div class="page"><div class="container">${headerTpl()}${body}</div></div>`;
+
+    if (state.view === 'route' && state.route.step === 'result' && state.route.result) {
+      setTimeout(() => { initRouteMap(state.route.result).catch(err => console.error('[route] map init failed', err)); }, 0);
+    }
   }
 
   document.addEventListener('click', e => {
@@ -1022,6 +1592,37 @@
     else if (action === 'pickDay') pickDay(Number(t.getAttribute('data-day')));
     else if (action === 'loadMore') loadMore();
     else if (action === 'loadMoreDays') loadMoreDays();
+    else if (action === 'openRoute') openRoute();
+    else if (action === 'backToRouteForm') backToRouteForm();
+    else if (action === 'pickRouteSport') pickRouteSport(t.getAttribute('data-sport'));
+    else if (action === 'adjustRoutePace') adjustRoutePace(Number(t.getAttribute('data-delta')));
+    else if (action === 'runRouteAnalysis') runRouteAnalysis();
+    else if (action === 'pickSavedRoute') pickSavedRoute(t.getAttribute('data-routeid'));
+    else if (action === 'deleteSavedRoute') deleteSavedRoute(t.getAttribute('data-routeid'));
+  });
+
+  document.addEventListener('change', e => {
+    if (e.target && e.target.id === 'routeFileInput') handleRouteFile(e.target.files && e.target.files[0]);
+  });
+  document.addEventListener('input', e => {
+    if (!e.target) return;
+    if (e.target.id === 'routeStartDateInput') {
+      const timePart = (state.route.startTime || '').slice(11, 16) || '00:00';
+      state.route.startTime = e.target.value + 'T' + timePart;
+    } else if (e.target.id === 'routeStartTimeInput') {
+      const datePart = (state.route.startTime || '').slice(0, 10) || defaultRouteMinValue().slice(0, 10);
+      state.route.startTime = datePart + 'T' + e.target.value;
+    }
+    else if (e.target.id === 'routePaceInput') {
+      const [lo, hi] = ROUTE_PACE_BOUNDS.bike;
+      state.route.paceKmh = Math.max(lo, Math.min(hi, Number(e.target.value) || ROUTE_PACE_DEFAULTS.bike));
+    } else if (e.target.id === 'routePaceMinKmInput') {
+      const kmh = parsePaceToKmh(e.target.value);
+      if (kmh != null) {
+        const [lo, hi] = ROUTE_PACE_BOUNDS.run;
+        state.route.paceKmh = Math.max(lo, Math.min(hi, kmh));
+      }
+    }
   });
 
   applyTheme();

@@ -165,6 +165,66 @@ function scoreChart(hs, P, scoreStyle, scoreHue, light) {
   return svgChart(W, H, inner);
 }
 
+/* Perfil de altimetría de una ruta, coloreado por tramo según su puntuación. */
+function elevationChart(points, segments, P, light) {
+  const W = 352, H = 176, top = 16, bot = 26, n = points.length;
+  const totalDist = points[n - 1].dist || 1;
+  const eles = points.map(p => p.ele);
+  const lo = Math.min(...eles), hi = Math.max(...eles);
+  const span = (hi - lo) || 10;
+  const x = d => (d / totalDist) * W;
+  const y = e => top + (H - top - bot) * (1 - (e - lo) / span);
+
+  const stride = Math.max(1, Math.floor(n / 400));
+  const sampled = []; for (let i = 0; i < n; i += stride) sampled.push(points[i]);
+  if (sampled[sampled.length - 1] !== points[n - 1]) sampled.push(points[n - 1]);
+
+  let fills = '';
+  segments.forEach(seg => {
+    const segPts = sampled.filter(p => p.dist >= seg.startDist && p.dist <= seg.endDist);
+    if (segPts.length < 2) return;
+    let d = 'M' + x(segPts[0].dist).toFixed(1) + ',' + (H - bot).toFixed(1);
+    segPts.forEach(p => { d += ' L' + x(p.dist).toFixed(1) + ',' + y(p.ele).toFixed(1); });
+    d += ' L' + x(segPts[segPts.length - 1].dist).toFixed(1) + ',' + (H - bot).toFixed(1) + ' Z';
+    const hue = scoreHue100(seg.score);
+    fills += `<path d="${d}" fill="oklch(0.68 0.15 ${hue})" opacity="${light ? 0.55 : 0.5}"/>`;
+  });
+
+  const line = sp(sampled.map(p => [x(p.dist), y(p.ele)]));
+
+  let segLines = '';
+  segments.forEach((seg, i) => {
+    if (i === 0) return;
+    const sx = x(seg.startDist).toFixed(1);
+    segLines += `<line x1="${sx}" y1="${top}" x2="${sx}" y2="${(H - bot).toFixed(1)}" stroke="${P.grid}" stroke-width="1" stroke-dasharray="2 3"/>`;
+  });
+
+  const kmMarks = [];
+  const totalKm = totalDist / 1000;
+  const step = totalKm > 80 ? 20 : totalKm > 40 ? 10 : totalKm > 15 ? 5 : totalKm > 6 ? 2 : 1;
+  for (let km = 0; km <= totalKm; km += step) kmMarks.push(km);
+  let axis = '';
+  kmMarks.forEach(km => {
+    const cx = Math.min(Math.max(x(km * 1000), 12), W - 12);
+    axis += `<text x="${cx.toFixed(1)}" y="${H - 6}" fill="${P.axis}" font-size="9" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${km}km</text>`;
+  });
+
+  let eleGrid = '';
+  const eleTicks = 3; // niveles intermedios entre mínima y máxima, para dar sensación de escala
+  for (let i = 1; i <= eleTicks; i++) {
+    const ele = lo + (i / (eleTicks + 1)) * span;
+    const gy = y(ele).toFixed(1);
+    eleGrid += `<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="${P.axis}" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"/>`
+      + `<text x="4" y="${(y(ele) - 3).toFixed(1)}" fill="${P.axis}" font-size="8.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(ele)}m</text>`;
+  }
+
+  const inner = axis + segLines + fills + eleGrid
+    + `<path d="${line}" stroke="${P.axis}" stroke-width="1.6" fill="none" opacity="0.85"/>`
+    + `<text x="4" y="${(top + 9).toFixed(1)}" fill="${P.axis}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(hi)}m</text>`
+    + `<text x="4" y="${(H - bot - 3).toFixed(1)}" fill="${P.axis}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(lo)}m</text>`;
+  return svgChart(W, H, inner);
+}
+
 function skyArc(kind, riseMin, setMin, nowMin, showDot, P) {
   const W = 300, H = 78, leftX = 26, rightX = W - 26, groundY = 50;
   const rx = (rightX - leftX) / 2, ry = 34, cx = (leftX + rightX) / 2;

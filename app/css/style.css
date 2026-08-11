@@ -1,6 +1,13 @@
 * { box-sizing: border-box; }
 
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
 :root {
+  color-scheme: dark;
   --bg1: oklch(0.24 0.045 255); --bg2: oklch(0.16 0.02 255);
   --text: oklch(0.97 0.005 250); --text-soft: oklch(0.86 0.015 250);
   --muted: oklch(0.68 0.02 250); --muted2: oklch(0.6 0.02 250); --muted3: oklch(0.52 0.02 250);
@@ -14,6 +21,7 @@
   --err-bg: oklch(0.26 0.05 25); --err-border: oklch(0.4 0.09 25);
 }
 [data-theme="light"] {
+  color-scheme: light;
   --bg1: oklch(0.95 0.03 250); --bg2: oklch(0.985 0.006 250);
   --text: oklch(0.27 0.02 255); --text-soft: oklch(0.38 0.02 255);
   --muted: oklch(0.5 0.02 250); --muted2: oklch(0.56 0.02 250); --muted3: oklch(0.65 0.02 250);

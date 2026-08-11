@@ -104,6 +104,61 @@ function windArrowRaw(dir, size, color) {
   return svgWrap(size || 13, inner);
 }
 
+/* Rosa de los vientos compacta: círculo con icono de deporte en el centro, 8 pétalos por dirección,
+   el pétalo de donde sopla el viento resaltado (más grande y con color) y el resto atenuados. */
+function windCompassSvg(windDirFromDeg, sport, accentColor, size) {
+  const s = size || 52;
+  const cx = s / 2, cy = s / 2, scale = s / 52;
+  const dir = ((Math.round((windDirFromDeg || 0) / 45) * 45) % 360 + 360) % 360;
+  const pt = (r, deg) => {
+    const rad = deg * Math.PI / 180;
+    return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
+  };
+  let petals = '';
+  for (let d = 0; d < 360; d += 45) {
+    const on = d === dir;
+    // Pétalo apuntando hacia el centro: base ancha fuera, punta cerca del círculo (el viento "entra").
+    const rOuter = (on ? 25 : 20) * scale, rInner = (on ? 9 : 10) * scale, half = on ? 11 : 8;
+    const p1 = pt(rOuter, d - half), p2 = pt(rOuter, d + half), p3 = pt(rInner, d);
+    petals += `<path d="M${p1.x.toFixed(1)},${p1.y.toFixed(1)} L${p3.x.toFixed(1)},${p3.y.toFixed(1)} L${p2.x.toFixed(1)},${p2.y.toFixed(1)} Z" fill="${on ? accentColor : 'var(--muted3)'}" opacity="${on ? 1 : 0.55}"/>`;
+  }
+  const circleR = 11.5 * scale;
+  const icon = sport === 'run' ? runTopGlyph(cx, cy, scale, accentColor) : bikeTopGlyph(cx, cy, scale, accentColor);
+  const circle = `<circle cx="${cx}" cy="${cy}" r="${circleR.toFixed(1)}" fill="var(--surface)" stroke="var(--border)" stroke-width="1.2"/>`;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">${petals}${circle}${icon}</svg>`;
+}
+
+/* Bici vista desde arriba, apuntando "hacia delante" (arriba = norte de la brújula): dos ruedas alargadas
+   en el eje de marcha, cuadro corto y manillar como travesaño al frente. Evita confundirla con el icono
+   de bici de perfil, que dentro de una brújula orientada no se lee como "hacia dónde avanzas". */
+function bikeTopGlyph(cx, cy, scale, color) {
+  const wRx = 1.6 * scale, wRy = 2.7 * scale;
+  const frontCy = cy - 4.2 * scale, backCy = cy + 4.2 * scale;
+  const barY = frontCy - wRy - 1.6 * scale, barHalf = 3 * scale;
+  const sw = Math.max(1, 1.3 * scale).toFixed(1);
+  return `<g fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round">
+    <ellipse cx="${cx}" cy="${frontCy.toFixed(1)}" rx="${wRx.toFixed(1)}" ry="${wRy.toFixed(1)}"/>
+    <ellipse cx="${cx}" cy="${backCy.toFixed(1)}" rx="${wRx.toFixed(1)}" ry="${wRy.toFixed(1)}"/>
+    <line x1="${cx}" y1="${(frontCy + wRy).toFixed(1)}" x2="${cx}" y2="${(backCy - wRy).toFixed(1)}"/>
+    <line x1="${cx}" y1="${(frontCy - wRy).toFixed(1)}" x2="${cx}" y2="${barY.toFixed(1)}"/>
+    <line x1="${(cx - barHalf).toFixed(1)}" y1="${barY.toFixed(1)}" x2="${(cx + barHalf).toFixed(1)}" y2="${barY.toFixed(1)}"/>
+  </g>`;
+}
+
+/* Corredor visto desde arriba, misma lógica: cabeza + tronco + piernas en V, apuntando hacia delante. */
+function runTopGlyph(cx, cy, scale, color) {
+  const sw = Math.max(1, 1.3 * scale).toFixed(1);
+  const headR = 1.8 * scale, headCy = cy - 6 * scale;
+  const torsoTopY = headCy + headR, torsoBotY = cy + 1 * scale;
+  const legSpread = 3 * scale, legBotY = cy + 7 * scale;
+  return `<g fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round">
+    <circle cx="${cx}" cy="${headCy.toFixed(1)}" r="${headR.toFixed(1)}"/>
+    <line x1="${cx}" y1="${torsoTopY.toFixed(1)}" x2="${cx}" y2="${torsoBotY.toFixed(1)}"/>
+    <line x1="${cx}" y1="${torsoBotY.toFixed(1)}" x2="${(cx - legSpread).toFixed(1)}" y2="${legBotY.toFixed(1)}"/>
+    <line x1="${cx}" y1="${torsoBotY.toFixed(1)}" x2="${(cx + legSpread).toFixed(1)}" y2="${legBotY.toFixed(1)}"/>
+  </g>`;
+}
+
 const UI_PATHS = {
   drop: c => [`M12 3.5c3 3.7 5.2 6.3 5.2 9a5.2 5.2 0 0 1-10.4 0c0-2.7 2.2-5.3 5.2-9Z`],
   wind: c => [`M3 9h9.5a2.8 2.8 0 1 0-2.8-2.8`, `M3 14.5h13a3 3 0 1 1-3 3`, `M3 19.5h6`],
@@ -113,7 +168,9 @@ const UI_PATHS = {
   expand: c => [`M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9`, `M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15`, `M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9`, `M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15`],
   moonToggle: c => [`M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5Z`],
   chevronDown: c => [`M6 9l6 6 6-6`],
-  install: c => [`M12 3v10`, `M8 9l4 4 4-4`, `M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2`]
+  install: c => [`M12 3v10`, `M8 9l4 4 4-4`, `M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2`],
+  upload: c => [`M12 15V5`, `M8 8.6 12 4.6l4 4`, `M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2`],
+  route: c => [`M5 19a2.2 2.2 0 1 0 0-4.4A2.2 2.2 0 0 0 5 19Z`, `M19 9a2.2 2.2 0 1 0 0-4.4A2.2 2.2 0 0 0 19 9Z`, `M6.6 15.2 13 8.4a3 3 0 0 1 4.3-.1L19 10`]
 };
 
 function uiIcon(name, size, color) {

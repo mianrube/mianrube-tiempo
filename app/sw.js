@@ -1,4 +1,4 @@
-const CACHE = 'mianrube-tiempo-v42';
+const CACHE = 'mianrube-tiempo-v44';
 const SHELL = [
   './',
   './index.html',
@@ -7,9 +7,18 @@ const SHELL = [
   './js/icons.js',
   './js/charts.js',
   './js/scoring.js',
+  './js/gpx.js',
+  './js/route.js',
   './js/app.js',
   './icons/icon.svg',
-  './icons/icon-maskable.svg'
+  './icons/icon-maskable.svg',
+  './vendor/leaflet/leaflet.js',
+  './vendor/leaflet/leaflet.css',
+  './vendor/leaflet/images/marker-icon.png',
+  './vendor/leaflet/images/marker-icon-2x.png',
+  './vendor/leaflet/images/marker-shadow.png',
+  './vendor/leaflet/images/layers.png',
+  './vendor/leaflet/images/layers-2x.png'
 ];
 
 self.addEventListener('install', event => {
@@ -31,7 +40,13 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return; // no cachear open-meteo / bigdatacloud / fonts
+  // Red primero: mientras haya conexión, la app siempre carga la versión más reciente del servidor.
+  // La caché solo entra como respaldo offline, así no dependemos de recordar subir la versión de CACHE.
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request).then(res => {
+      const copy = res.clone();
+      caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      return res;
+    }).catch(() => caches.match(event.request))
   );
 });
