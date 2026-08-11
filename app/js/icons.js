@@ -104,8 +104,10 @@ function windArrowRaw(dir, size, color) {
   return svgWrap(size || 13, inner);
 }
 
-/* Rosa de los vientos compacta: círculo con icono de deporte en el centro, 8 pétalos por dirección,
-   el pétalo de donde sopla el viento resaltado (más grande y con color) y el resto atenuados. */
+/* Rosa de los vientos compacta: círculo con icono de deporte en el centro (mirando "hacia delante" = arriba),
+   8 pétalos por dirección, el pétalo de donde sopla el viento resaltado (más grande y con color) y el resto
+   atenuados. windDirFromDeg es RELATIVO a tu rumbo (0 = viento de cara, 180 = a favor, 90/270 = lateral),
+   no el compás absoluto, para que el dibujo concuerde con "de cara/a favor/cruzado" sea cual sea tu dirección. */
 function windCompassSvg(windDirFromDeg, sport, accentColor, size) {
   const s = size || 52;
   const cx = s / 2, cy = s / 2, scale = s / 52;

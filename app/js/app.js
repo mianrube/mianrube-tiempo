@@ -1238,7 +1238,7 @@
         absWind: Math.round(seg.windSpeed || 0) + ' km/h', absGust: Math.round(seg.windGust || 0) + ' km/h',
         arrow: windArrow(seg.windDirection || 0, 12), dir: dirLabel(seg.windDirection || 0),
         relText, relColor,
-        compassSvg: windCompassSvg(seg.windDirection || 0, result.sport, relColor, 58),
+        compassSvg: windCompassSvg(((seg.windDirection || 0) - seg.bearingDeg + 360) % 360, result.sport, relColor, 58),
         prob: Math.round(seg.weatherInput.precipitationProbability || 0),
         probColor: probColor(seg.weatherInput.precipitationProbability || 0, L)
       };
@@ -1410,7 +1410,7 @@
           <div style="font-size:11.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">${s.temp}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px;color:var(--teal);font-size:10.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">
-          <span style="display:flex">${s.arrow}</span>real: ${s.dir} ${s.absWind} · r ${s.absGust}
+          <span style="display:flex">${s.arrow}</span>real: ${s.dir} – ${s.absWind} · r ${s.absGust}
         </div>
         <div style="font-size:10.5px;font-weight:700;color:${s.relColor};font-family:'IBM Plex Mono',monospace">relativo: ${s.relText}</div>
       </div>
@@ -1520,8 +1520,8 @@
       line.bindPopup('Tramo ' + (seg.index + 1) + ' · ' + seg.score + '/100<br>' + formatClock(seg.arrival) + ' · ' + Math.round(seg.speedKmh) + ' km/h');
       segPts.forEach(p => bounds.push(p));
 
-      const arrowHtml = '<div style="display:flex;filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) drop-shadow(0 1px 2px rgba(0,0,0,.4))">' + windArrow(seg.windDirection || 0, 19, windSpeedColor(seg.windSpeed)) + '</div>';
-      const windIcon = Lf.divIcon({ html: arrowHtml, className: '', iconSize: [19, 19], iconAnchor: [9, 9] });
+      const arrowHtml = '<div style="display:flex;filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) drop-shadow(0 1px 2px rgba(0,0,0,.4))">' + windArrow(seg.windDirection || 0, 25, windSpeedColor(seg.windSpeed)) + '</div>';
+      const windIcon = Lf.divIcon({ html: arrowHtml, className: '', iconSize: [25, 25], iconAnchor: [12, 12] });
       Lf.marker([seg.midLat, seg.midLon], { icon: windIcon, interactive: true, keyboard: false })
         .addTo(map)
         .bindPopup('Viento real: ' + dirLabel(seg.windDirection || 0) + ' ' + Math.round(seg.windSpeed || 0) + ' km/h · racha ' + Math.round(seg.windGust || 0) + ' km/h');
