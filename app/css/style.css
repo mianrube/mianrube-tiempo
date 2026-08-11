@@ -78,7 +78,7 @@ a:hover { opacity: .8; }
   font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
   font-weight: 800; color: var(--muted);
 }
-button, [role="button"], .clickable { cursor: pointer; }
+button, [role="button"], .clickable { cursor: pointer; touch-action: manipulation; }
 
 .skeleton {
   border-radius: 24px; background: var(--surface);

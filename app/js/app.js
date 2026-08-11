@@ -20,7 +20,7 @@
     route: {
       step: 'form', fileName: '', gpx: null, summary: null, error: null,
       startTime: defaultRouteStartValue(), paceKmh: 30, sport: 'bike', reversed: false,
-      analyzing: false, result: null, saved: [], savedLoaded: false
+      analyzing: false, result: null, saved: [], savedLoaded: false, listScores: {}
     }
   };
   let deferredInstallPrompt = null;
@@ -353,6 +353,7 @@
     try { state.route.saved = await idbListRoutes(); } catch (e) { state.route.saved = []; }
     state.route.savedLoaded = true;
     updateSavedRoutesBlock();
+    refreshRouteListScores();
     const missing = state.route.saved.filter(r => r.distKm == null);
     if (missing.length) {
       await Promise.all(missing.map(backfillRouteMeta));
@@ -362,6 +363,63 @@
   function updateSavedRoutesBlock() {
     const el = document.getElementById('routeSavedBlock');
     if (el) el.innerHTML = savedRoutesSectionHtml();
+  }
+
+  /* ---------- puntuación de rutas guardadas en la lista (sentido original vs invertido) ---------- */
+
+  const ROUTE_LIST_SCORE_BUCKET_MS = 15 * 60000; // agrupa por franjas de 15 min: escribir la hora no dispara una llamada por tecla
+  let routeListScoreQueue = [];
+  let routeListScoreRunning = false;
+  let routeListScoreDebounce = null;
+
+  function routeListScoreKey(routeId, reversed) {
+    const st = state.route;
+    const t = new Date(st.startTime).getTime();
+    const bucket = isNaN(t) ? 'x' : Math.round(t / ROUTE_LIST_SCORE_BUCKET_MS);
+    return routeId + '::' + (reversed ? 1 : 0) + '::' + st.sport + '::' + Math.round(st.paceKmh) + '::' + bucket;
+  }
+
+  async function computeRouteListScore(record, reversed) {
+    const startTime = new Date(state.route.startTime);
+    if (isNaN(startTime.getTime())) return null;
+    const gpx = parseRouteFile(record.gpxText, record.fileName);
+    const points = reversed ? gpx.points.slice().reverse() : gpx.points;
+    const result = await analyzeRoute({ name: gpx.name, points }, { sport: state.route.sport, paceKmh: state.route.paceKmh, startTime });
+    return result.overallScore;
+  }
+
+  async function processRouteListScoreQueue() {
+    if (routeListScoreRunning) return;
+    routeListScoreRunning = true;
+    while (routeListScoreQueue.length) {
+      const { record, reversed, key } = routeListScoreQueue.shift();
+      try {
+        const score = await computeRouteListScore(record, reversed);
+        state.route.listScores[key] = { status: 'done', score };
+      } catch (e) {
+        state.route.listScores[key] = { status: 'error' };
+      }
+      updateSavedRoutesBlock();
+    }
+    routeListScoreRunning = false;
+  }
+
+  function refreshRouteListScores() {
+    if (state.view !== 'route' || state.route.step !== 'form' || !state.route.savedLoaded) return;
+    (state.route.saved || []).forEach(record => {
+      [false, true].forEach(reversed => {
+        const key = routeListScoreKey(record.id, reversed);
+        if (state.route.listScores[key]) return; // ya calculada o en cola para esta combinación
+        state.route.listScores[key] = { status: 'loading' };
+        routeListScoreQueue.push({ record, reversed, key });
+      });
+    });
+    processRouteListScoreQueue();
+  }
+
+  function scheduleRouteListScoreRefresh() {
+    clearTimeout(routeListScoreDebounce);
+    routeListScoreDebounce = setTimeout(refreshRouteListScores, 600);
   }
   function savedRoutesSectionHtml() {
     return `<div class="section-label" style="padding-left:2px">Mis rutas (${(state.route.saved || []).length}/${MAX_SAVED_ROUTES})</div>
@@ -396,6 +454,7 @@
     const [lo, hi] = ROUTE_PACE_BOUNDS.bike;
     state.route.paceKmh = Math.max(lo, Math.min(hi, state.route.paceKmh + delta));
     render();
+    scheduleRouteListScoreRefresh();
   }
   function toggleRouteDirectionAndRecalc() {
     state.route.reversed = !state.route.reversed;
@@ -405,6 +464,7 @@
     state.route.sport = k;
     state.route.paceKmh = ROUTE_PACE_DEFAULTS[k];
     render();
+    scheduleRouteListScoreRefresh();
   }
 
   function loadGpxFromText(text, fileName) {
@@ -458,6 +518,7 @@
       await idbSaveRoute(record);
       state.route.saved = [record, ...state.route.saved];
       updateSavedRoutesBlock();
+      refreshRouteListScores();
       if (state.route.saved.length > MAX_SAVED_ROUTES) {
         const overflow = state.route.saved.slice(MAX_SAVED_ROUTES);
         state.route.saved = state.route.saved.slice(0, MAX_SAVED_ROUTES);
@@ -1299,15 +1360,36 @@
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
       <div class="clickable" data-action="pickSavedRoute" data-routeid="${esc(r.id)}" style="flex:1;display:flex;align-items:center;gap:9px;min-width:0">
         <div style="flex:none;color:var(--muted);display:flex">${uiIcon('pin', 15)}</div>
-        <div style="display:flex;flex-direction:column;min-width:0;gap:1px">
+        <div style="display:flex;flex-direction:column;min-width:0;gap:5px">
           <div style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.fileName)}</div>
-          ${meta.length ? `<div style="font-size:10.5px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">${meta.join(' · ')}</div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+            ${meta.length ? `<div style="font-size:10.5px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">${meta.join(' · ')}</div>` : ''}
+            ${routeListScoreChipsHtml(r)}
+          </div>
         </div>
       </div>
       <div class="clickable" data-action="deleteSavedRoute" data-routeid="${esc(r.id)}" style="flex:none;padding:6px;display:flex;color:var(--muted)">${uiIcon('close', 15)}</div>
     </div>`;
     }).join('');
     return `<div style="border-radius:18px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>`;
+  }
+
+  function routeListScoreChipsHtml(record) {
+    const L = currentTheme() === 'light';
+    const icon = sym => `<span style="display:inline-flex;align-items:center;justify-content:center;width:11px;flex:none;line-height:1">${sym}</span>`;
+    const chip = (sym, label, entry) => {
+      if (!entry || entry.status === 'loading') {
+        return `<div style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--muted);font-size:10px;font-weight:700">${icon(sym)}${label} …</div>`;
+      }
+      if (entry.status === 'error' || entry.score == null) {
+        return `<div style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--muted);font-size:10px;font-weight:700">${icon(sym)}${label} —</div>`;
+      }
+      const st = scoreStyle100(entry.score, L);
+      return `<div style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:${st.bg};border:1px solid ${st.border};color:${st.color};font-size:10px;font-weight:800">${icon(sym)}${label} ${entry.score}</div>`;
+    };
+    const fwd = state.route.listScores[routeListScoreKey(record.id, false)];
+    const rev = state.route.listScores[routeListScoreKey(record.id, true)];
+    return `${chip('→', 'Original', fwd)}${chip('↺', 'Invertido', rev)}`;
   }
 
   function routeFormTpl() {
@@ -1363,11 +1445,11 @@
             style="width:64px;background:transparent;border:none;color:var(--text);font-size:20px;font-weight:800;font-family:'IBM Plex Mono',monospace;outline:none">
           <div style="font-size:13px;font-weight:700;color:var(--muted)">min/km</div>
         </div>` : `
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
-          <div class="clickable" data-action="adjustRoutePace" data-delta="-1" style="flex:none;width:30px;height:30px;border-radius:99px;background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--text)">−</div>
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+          <div class="clickable" data-action="adjustRoutePace" data-delta="-1" style="flex:none;width:44px;height:44px;border-radius:99px;background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:var(--text)">−</div>
           <input id="routePaceInput" type="number" min="${ROUTE_PACE_BOUNDS.bike[0]}" max="${ROUTE_PACE_BOUNDS.bike[1]}" step="1" value="${r.paceKmh}"
             style="flex:1;min-width:0;text-align:center;background:transparent;border:none;color:var(--text);font-size:20px;font-weight:800;font-family:'IBM Plex Mono',monospace;outline:none">
-          <div class="clickable" data-action="adjustRoutePace" data-delta="1" style="flex:none;width:30px;height:30px;border-radius:99px;background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--text)">+</div>
+          <div class="clickable" data-action="adjustRoutePace" data-delta="1" style="flex:none;width:44px;height:44px;border-radius:99px;background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:var(--text)">+</div>
           <div style="flex:none;font-size:13px;font-weight:700;color:var(--muted)">km/h</div>
         </div>`}
       </div>
@@ -1646,7 +1728,8 @@
         const [lo, hi] = ROUTE_PACE_BOUNDS.run;
         state.route.paceKmh = Math.max(lo, Math.min(hi, kmh));
       }
-    }
+    } else return;
+    scheduleRouteListScoreRefresh();
   });
 
   applyTheme();
