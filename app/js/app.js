@@ -10,7 +10,7 @@
 
   const state = {
     loading: true, error: null, data: null,
-    place: null, region: null, lat: null, lon: null, fallback: false,
+    place: null, region: null, lat: null, lon: null, fallback: false, source: null,
     theme: null, view: 'main', dayIdx: 0, sport: 'bike', hourLimit: 48, dayLimit: 7,
     favorites: loadFavorites(),
     locationQuery: '', locationResultsRaw: [], locationResults: [], locSearching: false, locFavMsg: '', locSpainOnly: true,
@@ -29,6 +29,13 @@
   function saveFavorites() { localStorage.setItem('favorites', JSON.stringify(state.favorites)); }
   function favKey(item) { return item.lat.toFixed(2) + ',' + item.lon.toFixed(2); }
   function isFavorite(item) { return state.favorites.some(f => favKey(f) === favKey(item)); }
+
+  function loadLastLocation() {
+    try { return JSON.parse(localStorage.getItem('lastLocation')); } catch (e) { return null; }
+  }
+  function saveLastLocation(loc) {
+    try { localStorage.setItem('lastLocation', JSON.stringify(loc)); } catch (e) { /* storage best-effort */ }
+  }
 
   function getStoredTheme() {
     const saved = localStorage.getItem('theme');
@@ -81,15 +88,44 @@
   function load() {
     state.loading = true; state.error = null; state.data = null;
     render();
-    if (!navigator.geolocation) return fetchAll(DEFAULT_LAT, DEFAULT_LON, true);
+    if (!navigator.geolocation) return locateByIP();
     navigator.geolocation.getCurrentPosition(
-      p => fetchAll(p.coords.latitude, p.coords.longitude, false),
-      () => fetchAll(DEFAULT_LAT, DEFAULT_LON, true),
+      p => fetchAll(p.coords.latitude, p.coords.longitude, false, null, 'gps'),
+      () => locateByIP(),
       { timeout: 10000, maximumAge: 300000 }
     );
   }
 
-  async function fetchAll(lat, lon, fallback, known) {
+  const IP_GEO_PROVIDERS = [
+    async () => {
+      const r = await fetch('https://ipapi.co/json/');
+      if (!r.ok) throw new Error('ipapi.co ' + r.status);
+      const j = await r.json();
+      if (j.error || j.latitude == null || j.longitude == null) throw new Error('ipapi.co: ' + (j.reason || 'sin datos'));
+      return { lat: j.latitude, lon: j.longitude, place: j.city || j.region || 'Ubicación aproximada', region: [j.region, j.country_name].filter(Boolean).join(', ') };
+    },
+    async () => {
+      const r = await fetch('https://ipwho.is/');
+      if (!r.ok) throw new Error('ipwho.is ' + r.status);
+      const j = await r.json();
+      if (!j.success || j.latitude == null || j.longitude == null) throw new Error('ipwho.is: sin datos');
+      return { lat: j.latitude, lon: j.longitude, place: j.city || j.region || 'Ubicación aproximada', region: [j.region, j.country].filter(Boolean).join(', ') };
+    }
+  ];
+
+  async function locateByIP() {
+    for (const provider of IP_GEO_PROVIDERS) {
+      try {
+        const loc = await provider();
+        return fetchAll(loc.lat, loc.lon, true, { place: loc.place, region: loc.region }, 'ip');
+      } catch (e) { /* try next provider (ej. límite de peticiones superado) */ }
+    }
+    const last = loadLastLocation();
+    if (last) return fetchAll(last.lat, last.lon, true, { place: last.place, region: last.region }, 'saved');
+    return fetchAll(DEFAULT_LAT, DEFAULT_LON, true, null, 'default');
+  }
+
+  async function fetchAll(lat, lon, fallback, known, source) {
     try {
       const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
         '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
@@ -99,6 +135,7 @@
       const r = await fetch(u);
       if (!r.ok) throw new Error('Open-Meteo respondió ' + r.status);
       const data = await r.json();
+      const src = source || (known ? 'known' : 'gps');
       let place = known ? known.place : (fallback ? 'Madrid' : 'Ubicación actual');
       let region = known ? known.region : (fallback ? 'Ubicación por defecto' : '');
       if (!known) {
@@ -111,8 +148,9 @@
           }
         } catch (e) { /* geocoding is best-effort */ }
       }
-      Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, dayIdx: 0, hourLimit: 48, dayLimit: 7 });
+      Object.assign(state, { loading: false, error: null, data, place, region, lat, lon, fallback, source: src, dayIdx: 0, hourLimit: 48, dayLimit: 7 });
       if (!known) Object.assign(state, { gpsPlace: place, gpsRegion: region, gpsFallback: fallback });
+      if (src === 'gps' || src === 'ip' || src === 'known') saveLastLocation({ lat, lon, place, region });
       render();
     } catch (e) {
       Object.assign(state, { loading: false, error: e.message || 'Error de red' });
@@ -479,18 +517,25 @@
     return 14;
   }
 
+  const LOCATION_SOURCE_LABEL = {
+    gps: 'Ubicación actual (GPS)', ip: 'Ubicación actual (IP)',
+    known: 'Ubicación buscada',
+    saved: 'No se pudo obtener tu ubicación', default: 'No se pudo obtener tu ubicación'
+  };
   function headerTpl() {
     const light = currentTheme() === 'light';
     const themeIcon = light ? uiIcon('sunToggle', 18) : uiIcon('moonToggle', 18);
     const spin = state.loading ? 'animation:spin 1s linear infinite' : '';
     const place = state.place || '—';
     const nameSize = placeNameFontSize(place);
+    const isLive = state.source === 'gps' || state.source === 'known';
+    const eyebrow = LOCATION_SOURCE_LABEL[state.source] || 'Ubicación actual';
     return `
     <div style="display:flex;flex-direction:column;gap:6px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
         <div style="display:flex;align-items:center;gap:6px">
-          <div style="width:7px;height:7px;border-radius:99px;background:var(--live)"></div>
-          <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">Ubicación actual</div>
+          <div style="width:7px;height:7px;border-radius:99px;background:${isLive ? 'var(--live)' : 'var(--muted2)'}"></div>
+          <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)">${esc(eyebrow)}</div>
         </div>
         <div style="display:flex;gap:8px;flex:none">
           ${state.canInstall ? `<div class="btn-icon" data-action="installApp" title="Añadir a inicio">${uiIcon('install', 18)}</div>` : ''}
