@@ -53,6 +53,11 @@ a:hover { opacity: .8; }
   font-family: Manrope, Helvetica, sans-serif;
   color: var(--text);
 }
+.shell {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
 .container {
   width: 100%;
   max-width: 440px;
@@ -60,6 +65,60 @@ a:hover { opacity: .8; }
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.sidenav { display: none; }
+
+@media (min-width: 760px) {
+  .container { max-width: 640px; }
+}
+
+@media (min-width: 1100px) {
+  .shell {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    align-items: start;
+    gap: 32px;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: calc(28px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right)) 40px calc(24px + env(safe-area-inset-left));
+  }
+  .container { max-width: none; padding: 0; }
+  .sidenav {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    position: sticky;
+    top: 28px;
+    padding: 16px 12px;
+    border-radius: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .sidenav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 12px;
+    font-size: 13.5px; font-weight: 700; color: var(--text-soft);
+  }
+  .sidenav-item:hover { background: var(--btn-hover); }
+  .sidenav-item.active { background: var(--btn); color: var(--text); }
+}
+
+.tiles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (min-width: 760px) {
+  .tiles-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.main-grid { display: flex; flex-direction: column; gap: 14px; }
+.main-grid-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (min-width: 1100px) {
+  .main-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 16px; align-items: start; }
+}
+
+.route-grid { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .route-grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
+  .route-col-a { grid-column: 1; }
+  .route-col-b { grid-column: 2; }
 }
 .mono { font-family: 'IBM Plex Mono', monospace; }
 .btn-icon {

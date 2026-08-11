@@ -1050,15 +1050,6 @@
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
-
-      ${airQualityCardTpl(v.airQuality)}
-
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;gap:6px">${sportChipsTpl(v.sportChips, false)}</div>
-        ${actCardTpl(v.act)}
-      </div>
-
       <div class="clickable" data-action="openRoute" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:18px;background:var(--surface);border:1px solid var(--border)">
         <div style="flex:none;color:var(--live);display:flex">${uiIcon('route', 20)}</div>
         <div style="flex:1;display:flex;flex-direction:column;min-width:0;gap:1px">
@@ -1068,33 +1059,48 @@
         <div style="margin-left:auto;flex:none;color:var(--muted);display:flex;transform:rotate(-90deg)">${uiIcon('chevronDown', 16)}</div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
-          <div class="section-label">Próximas horas</div>
-          <div class="pill-btn" data-action="openHours">${uiIcon('expand', 14)}Ver todas</div>
+      <div class="main-grid">
+        <div class="main-grid-col">
+          <div class="tiles-grid">${tiles}</div>
+
+          ${airQualityCardTpl(v.airQuality)}
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:6px">${sportChipsTpl(v.sportChips, false)}</div>
+            ${actCardTpl(v.act)}
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
+              <div class="section-label">Próximas horas</div>
+              <div class="pill-btn" data-action="openHours">${uiIcon('expand', 14)}Ver todas</div>
+            </div>
+            <div style="display:flex;gap:6px">${hours}</div>
+          </div>
         </div>
-        <div style="display:flex;gap:6px">${hours}</div>
-      </div>
 
-      ${charts}
+        <div class="main-grid-col">
+          ${charts}
 
-      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
-        <div class="section-label" style="padding-left:2px">Sol</div>
-        ${v.sunArc}
-        ${riseSetRowTpl(v.sunRiseSet)}
-      </div>
+          <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+            <div class="section-label" style="padding-left:2px">Sol</div>
+            ${v.sunArc}
+            ${riseSetRowTpl(v.sunRiseSet)}
+          </div>
 
-      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-        <div class="section-label" style="padding-left:2px">Luna</div>
-        ${v.moonArcOk ? v.moonArc : ''}
-        ${riseSetRowTpl(v.moonRiseSet)}
-        <div style="padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
-      </div>
+          <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+            <div class="section-label" style="padding-left:2px">Luna</div>
+            ${v.moonArcOk ? v.moonArc : ''}
+            ${riseSetRowTpl(v.moonRiseSet)}
+            <div style="padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
+          </div>
 
-      <div style="display:flex;flex-direction:column;gap:9px">
-        <div class="section-label" style="padding-left:2px">Próximos ${v.days.length} días</div>
-        <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${days}</div>
-        ${v.hasMoreDays ? `<div class="pill-btn" data-action="loadMoreDays" style="align-self:center;padding:9px 18px;font-size:12px">${esc(v.moreDaysLabel)}</div>` : ''}
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div class="section-label" style="padding-left:2px">Próximos ${v.days.length} días</div>
+            <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${days}</div>
+            ${v.hasMoreDays ? `<div class="pill-btn" data-action="loadMoreDays" style="align-self:center;padding:9px 18px;font-size:12px">${esc(v.moreDaysLabel)}</div>` : ''}
+          </div>
+        </div>
       </div>
 
       <div style="text-align:center;font-size:10px;color:var(--muted3);font-weight:600;letter-spacing:.06em;padding-top:6px">Datos: Open-Meteo · ${esc(v.coords)}</div>
@@ -1545,35 +1551,41 @@
         </div>
       </div>
 
-      <div style="padding:14px 16px;border-radius:20px;background:${v.worstBg};border:1px solid ${v.worstBorder};display:flex;flex-direction:column;gap:6px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-          <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${v.worstColor}">Tramo más duro · km ${v.worstKm}</div>
-          <div style="font-size:15px;font-weight:800;color:${v.worstColor};font-family:'IBM Plex Mono',monospace">${v.worstScore}/100</div>
+      <div class="route-grid">
+        <div class="route-col-a" style="display:flex;flex-direction:column;gap:14px">
+          <div style="padding:14px 16px;border-radius:20px;background:${v.worstBg};border:1px solid ${v.worstBorder};display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${v.worstColor}">Tramo más duro · km ${v.worstKm}</div>
+              <div style="font-size:15px;font-weight:800;color:${v.worstColor};font-family:'IBM Plex Mono',monospace">${v.worstScore}/100</div>
+            </div>
+            <div style="font-size:12.5px;color:var(--text-soft);font-weight:500">Sobre las ${v.worstArrival} · ${esc(v.worstNote)}</div>
+          </div>
+
+          ${scoreLegendCardTpl()}
+
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div class="section-label" style="padding-left:2px">Detalle por tramos</div>
+            ${routeLegendNoteTpl()}
+            <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>
+          </div>
         </div>
-        <div style="font-size:12.5px;color:var(--text-soft);font-weight:500">Sobre las ${v.worstArrival} · ${esc(v.worstNote)}</div>
-      </div>
 
-      ${scoreLegendCardTpl()}
+        <div class="route-col-b" style="display:flex;flex-direction:column;gap:14px">
+          <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12px;font-weight:800;padding:0 2px">Altimetría y puntuación por tramo</div>
+            <div>${v.elevationSvg}</div>
+          </div>
 
-      <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-        <div style="font-size:12px;font-weight:800;padding:0 2px">Altimetría y puntuación por tramo</div>
-        <div>${v.elevationSvg}</div>
-      </div>
+          <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12px;font-weight:800;padding:0 2px">Viento por dirección relativa · tiempo total</div>
+            <div>${v.windRoseSvg}</div>
+          </div>
 
-      <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-        <div style="font-size:12px;font-weight:800;padding:0 2px">Viento por dirección relativa · tiempo total</div>
-        <div>${v.windRoseSvg}</div>
-      </div>
-
-      <div style="border-radius:20px;overflow:hidden;border:1px solid var(--border)">
-        <div id="routeMap" style="height:440px;background:var(--surface)"></div>
-      </div>
-      <div style="font-size:10px;color:var(--muted);font-weight:600;padding:0 4px;text-align:center">Las flechas muestran de dónde sopla el viento real en cada tramo</div>
-
-      <div style="display:flex;flex-direction:column;gap:9px">
-        <div class="section-label" style="padding-left:2px">Detalle por tramos</div>
-        ${routeLegendNoteTpl()}
-        <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>
+          <div style="border-radius:20px;overflow:hidden;border:1px solid var(--border)">
+            <div id="routeMap" style="height:440px;background:var(--surface)"></div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);font-weight:600;padding:0 4px;text-align:center">Las flechas muestran de dónde sopla el viento real en cada tramo</div>
+        </div>
       </div>
 
       <div style="text-align:center;font-size:10px;color:var(--muted3);font-weight:600;letter-spacing:.04em;padding:0 10px">Estimación a partir de tu ritmo y la previsión meteorológica: las horas de paso y las condiciones reales pueden variar</div>
@@ -1658,6 +1670,22 @@
 
   /* ---------- render ---------- */
 
+  function sideNavTpl() {
+    const items = [
+      { key: 'main', label: 'Ahora', action: 'backToMain', icon: 'sunToggle' },
+      { key: 'hours', label: 'Horas', action: 'openHours', icon: 'expand' },
+      { key: 'route', label: 'Ruta', action: 'openRoute', icon: 'route' },
+      { key: 'location', label: 'Ubicación', action: 'openLocation', icon: 'pin' }
+    ];
+    const rows = items.map(it => `<div class="clickable sidenav-item${state.view === it.key ? ' active' : ''}" data-action="${it.action}">
+      <span style="display:flex">${uiIcon(it.icon, 18)}</span><span>${esc(it.label)}</span>
+    </div>`).join('');
+    return `<nav class="sidenav">
+      <div style="font-size:13px;font-weight:800;letter-spacing:-.01em;padding:6px 12px 14px">mianrube tiempo</div>
+      ${rows}
+    </nav>`;
+  }
+
   function render() {
     applyTheme();
     let body;
@@ -1670,7 +1698,7 @@
       body = state.view === 'hours' ? hoursViewTpl(v) : mainViewTpl(v);
     } else body = '';
 
-    document.getElementById('app').innerHTML = `<div class="page"><div class="container">${headerTpl()}${body}</div></div>`;
+    document.getElementById('app').innerHTML = `<div class="page"><div class="shell">${sideNavTpl()}<div class="container">${headerTpl()}${body}</div></div></div>`;
 
     if (state.view === 'route' && state.route.step === 'result' && state.route.result) {
       setTimeout(() => { initRouteMap(state.route.result).catch(err => console.error('[route] map init failed', err)); }, 0);
