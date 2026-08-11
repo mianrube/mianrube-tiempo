@@ -1,7 +1,15 @@
 /* Motor de análisis de ruta: segmentación, física de ritmo, viento relativo y puntuación por tramo. */
 
 const ROUTE_TARGET_MIN = 15;      // duración objetivo de cada tramo (min), antes de ajustar por física real
-const ROUTE_MIN_SEGMENT_KM = 2;   // longitud mínima de un tramo
+const ROUTE_MIN_SEGMENT_KM = 2;   // longitud mínima de un tramo "normal" (por distancia/tiempo)
+const ROUTE_TURN_MIN_KM = 2;      // no cortamos por giro brusco si el tramo aún no llega a esta distancia
+const ROUTE_TURN_ANGLE_DEG = 90;  // desviación respecto al rumbo de inicio del tramo que fuerza un corte anticipado;
+                                   // solo cambios de sentido/herraduras reales. La curvatura moderada no necesita
+                                   // cortar, porque el rumbo del tramo se calcula por media circular (ver
+                                   // circularMeanBearing), no por la cuerda extremo-a-extremo.
+const ROUTE_BEARING_SMOOTH_M = 25; // tolerancia (m) para suavizar el rumbo punto-a-punto antes de segmentar,
+                                    // clave en GPX densos (1 punto/seg de reloj/ciclocomputador) donde el ruido
+                                    // GPS entre puntos consecutivos es mayor que la distancia entre ellos
 const ROUTE_MAX_SEGMENTS = 24;    // techo de tramos (y por tanto de coordenadas a consultar)
 const ROUTE_GRID_DEG = 0.03;      // ~3.3km: tramos cuyo punto medio cae en la misma celda comparten petición
 const ROUTE_HORIZON_DAYS = 14;    // horizonte de previsión horaria de Open-Meteo
@@ -80,18 +88,48 @@ function pointAtDistance(points, targetDist) {
 }
 
 /* Divide la ruta en tramos de ~ROUTE_TARGET_MIN minutos (estimado con paceKmh plano), con mínimo y máximo. */
+/*
+ * Corta la ruta en tramos cuando se alcanza la distancia objetivo (~ROUTE_TARGET_MIN a paceKmh) O cuando
+ * el giro acumulado desde el inicio del tramo supera ROUTE_TURN_ANGLE_DEG (y ya se lleva al menos
+ * ROUTE_TURN_MIN_KM), lo que ocurra antes. Así el rumbo de cada tramo representa de verdad por dónde
+ * se va, en vez de la cuerda recta entre extremos de un tramo que puede contener giros radicales.
+ * Si el resultado supera ROUTE_MAX_SEGMENTS (carreteras muy sinuosas), fusiona los tramos más cortos
+ * hasta caber en el tope.
+ */
 function buildSegments(points, paceKmh) {
   const totalDist = points[points.length - 1].dist;
   let targetDistM = paceKmh * (ROUTE_TARGET_MIN / 60) * 1000;
   targetDistM = Math.max(targetDistM, ROUTE_MIN_SEGMENT_KM * 1000);
-  let nSegments = Math.max(1, Math.ceil(totalDist / targetDistM));
-  if (nSegments > ROUTE_MAX_SEGMENTS) nSegments = ROUTE_MAX_SEGMENTS;
-  const segDist = totalDist / nSegments;
+  const turnMinM = ROUTE_TURN_MIN_KM * 1000;
+
+  // Comparamos contra el rumbo del INICIO del tramo (no acumulamos giro paso a paso): una carretera con
+  // eses que oscila pero vuelve a un rumbo medio parecido no debe cortar, solo un cambio de sentido real
+  // que aleje el rumbo de forma sostenida.
+  const boundaries = [0];
+  let segStartIdx = 0;
+  for (let i = 1; i < points.length; i++) {
+    const distSinceStart = points[i].dist - points[segStartIdx].dist;
+    const devFromStart = angleDiff(points[segStartIdx].bearing, points[i].bearing);
+    const isLast = i === points.length - 1;
+    if (distSinceStart >= targetDistM || (devFromStart >= ROUTE_TURN_ANGLE_DEG && distSinceStart >= turnMinM) || isLast) {
+      boundaries.push(i);
+      segStartIdx = i;
+    }
+  }
+
+  while (boundaries.length - 1 > ROUTE_MAX_SEGMENTS) {
+    let bestP = 1, bestCost = Infinity;
+    for (let p = 1; p < boundaries.length - 1; p++) {
+      const cost = (points[boundaries[p]].dist - points[boundaries[p - 1]].dist) + (points[boundaries[p + 1]].dist - points[boundaries[p]].dist);
+      if (cost < bestCost) { bestCost = cost; bestP = p; }
+    }
+    boundaries.splice(bestP, 1);
+  }
 
   const segments = [];
-  for (let s = 0; s < nSegments; s++) {
-    const startDist = s * segDist, endDist = s === nSegments - 1 ? totalDist : (s + 1) * segDist;
-    const startPt = pointAtDistance(points, startDist), endPt = pointAtDistance(points, endDist);
+  for (let s = 0; s < boundaries.length - 1; s++) {
+    const startPt = points[boundaries[s]], endPt = points[boundaries[s + 1]];
+    const startDist = startPt.dist, endDist = endPt.dist;
     const midPt = pointAtDistance(points, (startDist + endDist) / 2);
     const distanceM = endDist - startDist;
     const eleDelta = endPt.ele - startPt.ele;
@@ -100,11 +138,29 @@ function buildSegments(points, paceKmh) {
       index: s, startDist, endDist, distanceM,
       startLat: startPt.lat, startLon: startPt.lon,
       midLat: midPt.lat, midLon: midPt.lon,
-      bearingDeg: bearing(startPt.lat, startPt.lon, endPt.lat, endPt.lon),
+      bearingDeg: circularMeanBearing(points, boundaries[s], boundaries[s + 1]),
       gradeFraction, eleStart: startPt.ele, eleEnd: endPt.ele
     });
   }
   return segments;
+}
+
+/*
+ * Rumbo representativo de un tramo: media circular de los rumbos locales entre startIdx y endIdx,
+ * ponderada por la distancia de cada tramo local. A diferencia de la cuerda recta extremo-a-extremo,
+ * sigue siendo fiel aunque el tramo tenga curvatura moderada (no solo cuando es una recta perfecta).
+ */
+function circularMeanBearing(points, startIdx, endIdx) {
+  let sx = 0, sy = 0;
+  for (let j = startIdx; j < endIdx; j++) {
+    const w = points[j + 1].dist - points[j].dist;
+    if (w <= 0) continue;
+    const rad = toRad(points[j].bearing);
+    sx += w * Math.sin(rad);
+    sy += w * Math.cos(rad);
+  }
+  if (sx === 0 && sy === 0) return bearing(points[startIdx].lat, points[startIdx].lon, points[endIdx].lat, points[endIdx].lon);
+  return (toDeg(Math.atan2(sx, sy)) + 360) % 360;
 }
 
 /* Agrupa tramos cuyo punto medio cae en la misma celda de rejilla, para minimizar peticiones. */
@@ -232,6 +288,7 @@ async function analyzeRoute(gpx, opts) {
 
   const points = gpx.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele }));
   enrichWithDistanceAndBearing(points);
+  smoothBearings(points, ROUTE_BEARING_SMOOTH_M);
   if (!hasElevation(points)) await fetchElevationForPoints(points);
   else fillMissingElevation(points);
 

@@ -102,6 +102,25 @@ function enrichWithDistanceAndBearing(points) {
   return points;
 }
 
+/*
+ * Sustituye el rumbo punto-a-punto (muy ruidoso en grabaciones densas, p.ej. GPX de reloj/ciclocomputador
+ * a 1 punto/segundo, donde el error normal del GPS es mayor que la distancia entre puntos consecutivos)
+ * por el rumbo de una versión simplificada (Douglas-Peucker) del trazado. Cada punto se queda con el
+ * rumbo del tramo simplificado al que pertenece, así que ya no responde al ruido sino a la forma real
+ * de la carretera. Requiere que enrichWithDistanceAndBearing ya se haya ejecutado. Muta points en el sitio.
+ */
+function smoothBearings(points, toleranceMeters) {
+  if (points.length < 3) return points;
+  const keep = simplifyIndices(points, toleranceMeters);
+  for (let k = 0; k < keep.length - 1; k++) {
+    const a = keep[k], b = keep[k + 1];
+    const segBearing = bearing(points[a].lat, points[a].lon, points[b].lat, points[b].lon);
+    for (let i = a; i < b; i++) points[i].bearing = segBearing;
+  }
+  points[points.length - 1].bearing = points[points.length - 2].bearing;
+  return points;
+}
+
 /* true si al menos un punto trae elevación real del GPX. */
 function hasElevation(points) { return points.some(p => p.ele != null); }
 

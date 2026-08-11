@@ -1,5 +1,19 @@
 /* Generadores de gráficas SVG, portados del prototipo de diseño. */
 
+/* Spline cerrada (Catmull-Rom) que pasa por todos los puntos y vuelve suavemente al primero. */
+function closedSpline(pts) {
+  const n = pts.length;
+  if (n < 3) return sp(pts) + ' Z';
+  let d = 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+  }
+  return d + ' Z';
+}
+
 function sp(pts) {
   if (!pts.length) return '';
   if (pts.length < 3) {
@@ -223,6 +237,50 @@ function elevationChart(points, segments, P, light) {
     + `<text x="4" y="${(top + 9).toFixed(1)}" fill="${P.axis}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(hi)}m</text>`
     + `<text x="4" y="${(H - bot - 3).toFixed(1)}" fill="${P.axis}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(lo)}m</text>`;
   return svgChart(W, H, inner);
+}
+
+/*
+ * Rosa de los vientos por tiempo: cuánto tiempo (de los 8 sectores relativos a tu rumbo) vas a llevar el
+ * viento encima. buckets[0]=de cara (arriba), [2]=lateral derecha, [4]=a favor (abajo), [6]=lateral
+ * izquierda, con los impares como intermedios — mismo convenio que la brújula de cada tramo. Valores en segundos.
+ */
+function windRoseChart(buckets, totalSec, P, light) {
+  const W = 440, H = 300, cx = 220, cy = 150, rMax = 95;
+  const maxVal = Math.max(...buckets, 1);
+  const pt = (idx, r) => {
+    const rad = idx * 45 * Math.PI / 180;
+    return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
+  };
+  let grid = '';
+  [0.25, 0.5, 0.75, 1].forEach(f => {
+    const ringPts = [];
+    for (let i = 0; i < 8; i++) { const p = pt(i, rMax * f); ringPts.push([p.x, p.y]); }
+    grid += `<path d="${closedSpline(ringPts)}" fill="none" stroke="${P.grid}" stroke-width="1" opacity="0.55"/>`;
+  });
+  let spokes = '';
+  for (let i = 0; i < 8; i++) { const p = pt(i, rMax); spokes += `<line x1="${cx}" y1="${cy}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${P.grid}" stroke-width="1" opacity="0.55"/>`; }
+  const dataPts = buckets.map((v, i) => { const p = pt(i, rMax * (v / maxVal)); return [p.x, p.y]; });
+  const dataShape = `<path d="${closedSpline(dataPts)}" fill="${P.tealLine}" opacity="${light ? 0.3 : 0.35}" stroke="${P.tealLine}" stroke-width="2.4" stroke-linejoin="round"/>`;
+  let dots = '';
+  dataPts.forEach(([x, y], i) => {
+    if (buckets[i] <= 0) return;
+    dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${P.dot}" stroke="${P.tealLine}" stroke-width="1.8"/>`;
+  });
+  const valueText = sec => Math.round(sec / (totalSec || 1) * 100) + '% · ' + Math.round(sec / 60) + ' min';
+  const labelDefs = [
+    { i: 0, text: 'De cara', anchor: 'middle' }, { i: 2, text: 'Lateral dcha.', anchor: 'start' },
+    { i: 4, text: 'A favor', anchor: 'middle' }, { i: 6, text: 'Lateral izq.', anchor: 'end' }
+  ];
+  let labels = '';
+  labelDefs.forEach(({ i, text, anchor }) => {
+    const p = pt(i, rMax + 20);
+    labels += `<text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" text-anchor="${anchor}">`
+      + `<tspan x="${p.x.toFixed(1)}" dy="-3" fill="${P.axis}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${text}</tspan>`
+      + `<tspan x="${p.x.toFixed(1)}" dy="15" fill="${P.tealLine}" font-size="12" font-weight="800" font-family="'IBM Plex Mono', monospace">${valueText(buckets[i])}</tspan>`
+      + `</text>`;
+  });
+  const inner = grid + spokes + dataShape + dots + labels;
+  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" fill="none" style="max-width:${W}px;display:block;margin:0 auto">${inner}</svg>`;
 }
 
 function skyArc(kind, riseMin, setMin, nowMin, showDot, P) {

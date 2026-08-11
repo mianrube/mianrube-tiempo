@@ -19,7 +19,7 @@
     canInstall: false,
     route: {
       step: 'form', fileName: '', gpx: null, summary: null, error: null,
-      startTime: defaultRouteStartValue(), paceKmh: 30, sport: 'bike',
+      startTime: defaultRouteStartValue(), paceKmh: 30, sport: 'bike', reversed: false,
       analyzing: false, result: null, saved: [], savedLoaded: false
     }
   };
@@ -397,6 +397,10 @@
     state.route.paceKmh = Math.max(lo, Math.min(hi, state.route.paceKmh + delta));
     render();
   }
+  function toggleRouteDirectionAndRecalc() {
+    state.route.reversed = !state.route.reversed;
+    runRouteAnalysis();
+  }
   function pickRouteSport(k) {
     state.route.sport = k;
     state.route.paceKmh = ROUTE_PACE_DEFAULTS[k];
@@ -414,6 +418,7 @@
       state.route.gpx = gpx;
       state.route.gpxText = text;
       state.route.fileName = fileName || gpx.name || 'ruta.gpx';
+      state.route.reversed = false;
       state.route.summary = { distKm, points: pts.length, gain: gainLoss.gain, loss: gainLoss.loss, hasEle: hasElevation(pts) };
       state.route.error = null;
     } catch (e) {
@@ -469,7 +474,11 @@
     try {
       const startTime = new Date(state.route.startTime);
       if (isNaN(startTime.getTime())) throw new Error('Indica una hora de salida válida');
-      const result = await analyzeRoute(state.route.gpx, { sport: state.route.sport, paceKmh: state.route.paceKmh, startTime });
+      const gpxToAnalyze = state.route.reversed
+        ? { name: state.route.gpx.name, points: state.route.gpx.points.slice().reverse() }
+        : state.route.gpx;
+      const result = await analyzeRoute(gpxToAnalyze, { sport: state.route.sport, paceKmh: state.route.paceKmh, startTime });
+      result.reversed = state.route.reversed;
       state.route.result = result;
       state.route.step = 'result'; state.route.analyzing = false;
       render();
@@ -1244,6 +1253,12 @@
       };
     });
 
+    const windRoseBuckets = new Array(8).fill(0);
+    result.segments.forEach(seg => {
+      const rel = ((seg.windDirection || 0) - seg.bearingDeg + 360) % 360;
+      const idx = Math.round(rel / 45) % 8;
+      windRoseBuckets[idx] += seg.durationSec;
+    });
     return {
       L, P,
       overallScore: result.overallScore, overallColor: overallStyle.color, overallBg: overallStyle.bg, overallBorder: overallStyle.border,
@@ -1252,18 +1267,20 @@
       durationLabel: formatDuration(result.totalDurationSec),
       startLabel: formatClock(result.startTime), arrivalLabel: formatClock(result.arrivalTime),
       elevGain: result.elevationGain, elevLoss: result.elevationLoss,
-      paceKmh: result.paceKmh, sportName,
+      paceKmh: result.paceKmh, sportName, reversed: result.reversed,
       worstN: w.index + 1, worstKm: (w.startDist / 1000).toFixed(1) + ' – ' + (w.endDist / 1000).toFixed(1),
       worstArrival: formatClock(w.arrival), worstScore: w.score,
       worstColor: worstStyle.color, worstBg: worstStyle.bg, worstBorder: worstStyle.border, worstNote,
       elevationSvg: elevationChart(result.points, result.segments, P, L),
+      windRoseSvg: windRoseChart(windRoseBuckets, result.totalDurationSec, P, L),
       segments
     };
   }
 
-  function routeSummaryChips(s) {
+  function routeSummaryChips(s, reversed) {
     if (!s) return '';
-    const eleText = s.hasEle ? (s.gain != null ? '+' + s.gain + 'm / −' + s.loss + 'm' : '—') : 'sin elevación en el GPX (se calculará)';
+    const gain = reversed ? s.loss : s.gain, loss = reversed ? s.gain : s.loss;
+    const eleText = s.hasEle ? (gain != null ? '+' + gain + 'm / −' + loss + 'm' : '—') : 'sin elevación en el GPX (se calculará)';
     return `<div style="display:flex;flex-wrap:wrap;gap:8px">
       <div style="padding:6px 12px;border-radius:99px;background:var(--btn);font-size:11.5px;font-weight:700">${s.distKm.toFixed(1)} km</div>
       <div style="padding:6px 12px;border-radius:99px;background:var(--btn);font-size:11.5px;font-weight:700">${s.points} puntos</div>
@@ -1320,7 +1337,7 @@
         <input id="routeFileInput" type="file" accept=".gpx,.tcx" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden">
       </label>
 
-      ${routeSummaryChips(r.summary)}
+      ${routeSummaryChips(r.summary, r.reversed)}
 
       <div style="display:flex;flex-direction:column;gap:9px">
         <div class="section-label" style="padding-left:2px">Deporte</div>
@@ -1426,6 +1443,7 @@
       <div style="display:flex;align-items:center;gap:10px">
         <div class="pill-btn" data-action="backToRouteForm" style="padding:8px 13px 8px 10px">${uiIcon('back', 16)}Nueva ruta</div>
         <div class="section-label">Resultado</div>
+        <div class="pill-btn" data-action="toggleRouteDirectionAndRecalc" style="margin-left:auto">↺ ${v.reversed ? 'Volver al original' : 'Invertir sentido'}</div>
       </div>
 
       <div style="padding:16px;border-radius:22px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
@@ -1436,10 +1454,10 @@
             <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace">
               <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.distanceLabel}</div>
               <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.durationLabel}</div>
-              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.startLabel}→${v.arrivalLabel}</div>
+              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.startLabel} → ${v.arrivalLabel}</div>
             </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--muted)">
-              <div>▲ ${v.elevGain}m</div><div>▼ ${v.elevLoss}m</div><div>ritmo base ${v.paceKmh} km/h</div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--muted)">
+              <div>▲ ${v.elevGain}m</div><div>▼ ${v.elevLoss}m</div><div>ritmo base ${v.paceKmh} km/h</div>${v.reversed ? '<div style="color:var(--live)">↺ sentido invertido</div>' : ''}
             </div>
           </div>
         </div>
@@ -1460,8 +1478,13 @@
         <div>${v.elevationSvg}</div>
       </div>
 
+      <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:12px;font-weight:800;padding:0 2px">Viento por dirección relativa · tiempo total</div>
+        <div>${v.windRoseSvg}</div>
+      </div>
+
       <div style="border-radius:20px;overflow:hidden;border:1px solid var(--border)">
-        <div id="routeMap" style="height:320px;background:var(--surface)"></div>
+        <div id="routeMap" style="height:440px;background:var(--surface)"></div>
       </div>
       <div style="font-size:10px;color:var(--muted);font-weight:600;padding:0 4px;text-align:center">Las flechas muestran de dónde sopla el viento real en cada tramo</div>
 
@@ -1595,6 +1618,7 @@
     else if (action === 'openRoute') openRoute();
     else if (action === 'backToRouteForm') backToRouteForm();
     else if (action === 'pickRouteSport') pickRouteSport(t.getAttribute('data-sport'));
+    else if (action === 'toggleRouteDirectionAndRecalc') toggleRouteDirectionAndRecalc();
     else if (action === 'adjustRoutePace') adjustRoutePace(Number(t.getAttribute('data-delta')));
     else if (action === 'runRouteAnalysis') runRouteAnalysis();
     else if (action === 'pickSavedRoute') pickSavedRoute(t.getAttribute('data-routeid'));
