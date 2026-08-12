@@ -211,6 +211,50 @@ async function fetchGroupForecasts(groups, startTime, estimatedDurationH) {
   return byKey;
 }
 
+/* Calidad del aire por tramo: mismo agrupado por coordenadas que el tiempo, pero best-effort (la ruta
+   se analiza igual aunque esto falle o la salida caiga fuera del horizonte de la API de calidad del aire). */
+const ROUTE_POLLEN_KEYS = ['alder_pollen', 'birch_pollen', 'grass_pollen', 'mugwort_pollen', 'olive_pollen', 'ragweed_pollen'];
+const ROUTE_AQI_HOURLY_VARS = ['european_aqi', 'pm2_5', 'pm10'].concat(ROUTE_POLLEN_KEYS).join(',');
+const ROUTE_AQI_HORIZON_DAYS = 6;
+
+async function fetchGroupAirQuality(groups, startTime, estimatedDurationH) {
+  const now = new Date();
+  const endTime = new Date(startTime.getTime() + estimatedDurationH * 3600000);
+  const hoursAhead = (endTime - now) / 3600000;
+  if (hoursAhead > ROUTE_AQI_HORIZON_DAYS * 24) return null; // fuera de horizonte: se omite, no rompe el análisis
+  const days = Math.min(ROUTE_AQI_HORIZON_DAYS, Math.max(2, Math.ceil(hoursAhead / 24) + 1));
+  const coords = Array.from(groups.values());
+  const lat = coords.map(c => c.lat.toFixed(4)).join(',');
+  const lon = coords.map(c => c.lon.toFixed(4)).join(',');
+  const url = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + lat + '&longitude=' + lon +
+    '&hourly=' + ROUTE_AQI_HOURLY_VARS + '&timezone=auto&forecast_days=' + days;
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const json = await r.json();
+  const list = Array.isArray(json) ? json : [json];
+  const keys = Array.from(groups.keys());
+  const byKey = {};
+  keys.forEach((k, i) => { byKey[k] = list[i]; });
+  return byKey;
+}
+
+/* Interpola european_aqi/pm2_5/pm10 en un instante dado, igual criterio que interpolateHourly. */
+function interpolateHourlyAqi(H, date) {
+  const times = H.time;
+  const target = date.getTime();
+  let i0 = 0;
+  for (let i = 0; i < times.length - 1; i++) {
+    if (new Date(times[i]).getTime() <= target) i0 = i; else break;
+  }
+  const i1 = Math.min(i0 + 1, times.length - 1);
+  const t0 = new Date(times[i0]).getTime(), t1 = new Date(times[i1]).getTime();
+  const f = t1 > t0 ? Math.max(0, Math.min(1, (target - t0) / (t1 - t0))) : 0;
+  const lerp = key => H[key] ? H[key][i0] + f * ((H[key][i1] || H[key][i0]) - H[key][i0]) : undefined;
+  const pollen = {};
+  ROUTE_POLLEN_KEYS.forEach(k => { pollen[k] = lerp(k); });
+  return { value: lerp('european_aqi'), pm25: lerp('pm2_5'), pm10: lerp('pm10'), pollen };
+}
+
 /* Elevación de puntos que no traen cota en el GPX. */
 async function fetchElevationForPoints(points) {
   const step = Math.max(1, Math.floor(points.length / 100)); // como mucho ~100 consultas
@@ -298,12 +342,18 @@ async function analyzeRoute(gpx, opts) {
 
   const segments = buildSegments(points, paceKmh);
   const groups = assignCoordGroups(segments);
-  const forecasts = await fetchGroupForecasts(groups, startTime, roughDurationH);
+  const [forecasts, aqiForecasts] = await Promise.all([
+    fetchGroupForecasts(groups, startTime, roughDurationH),
+    fetchGroupAirQuality(groups, startTime, roughDurationH).catch(() => null)
+  ]);
 
   const power = sport === 'bike' ? impliedPowerWatts(paceKmh) : null;
   let clock = new Date(startTime);
   let timeWeightedScoreSum = 0, totalSeconds = 0;
   let worst = null;
+  let aqiWeightedSum = 0, aqiSeconds = 0, worstAqiSegment = null;
+  let maxUvIndex = 0, uvProtectionSeconds = 0; // UV >= 3: umbral OMS a partir del cual conviene protegerse
+  const maxPollen = {}; ROUTE_POLLEN_KEYS.forEach(k => { maxPollen[k] = 0; });
 
   segments.forEach(seg => {
     const H = forecasts[seg.coordKey].hourly;
@@ -334,6 +384,21 @@ async function analyzeRoute(gpx, opts) {
     seg.weather = w0; seg.score = result.score;
     seg.weatherInput = weatherInput; seg.scoreResult = result;
 
+    if (aqiForecasts && aqiForecasts[seg.coordKey]) {
+      const aq = interpolateHourlyAqi(aqiForecasts[seg.coordKey].hourly, arrival);
+      if (aq.value != null) {
+        seg.aqi = aq;
+        aqiWeightedSum += aq.value * durationSec;
+        aqiSeconds += durationSec;
+        if (!worstAqiSegment || aq.value > worstAqiSegment.aqi.value) worstAqiSegment = seg;
+        ROUTE_POLLEN_KEYS.forEach(k => { if (aq.pollen[k] != null) maxPollen[k] = Math.max(maxPollen[k], aq.pollen[k]); });
+      }
+    }
+    if (w0.uvIndex != null) {
+      maxUvIndex = Math.max(maxUvIndex, w0.uvIndex);
+      if (w0.uvIndex >= 3) uvProtectionSeconds += durationSec;
+    }
+
     timeWeightedScoreSum += result.score * durationSec;
     totalSeconds += durationSec;
     if (!worst || result.score < worst.score) worst = seg;
@@ -342,6 +407,7 @@ async function analyzeRoute(gpx, opts) {
   });
 
   const overallScore = totalSeconds > 0 ? Math.round(timeWeightedScoreSum / totalSeconds) : 0;
+  const overallAqi = aqiSeconds > 0 ? Math.round(aqiWeightedSum / aqiSeconds) : null;
   const elev = elevationGainLoss(points, 5);
 
   return {
@@ -349,6 +415,8 @@ async function analyzeRoute(gpx, opts) {
     totalDistKm, totalDurationSec: totalSeconds,
     elevationGain: elev.gain, elevationLoss: elev.loss,
     overallScore, worstSegment: worst,
+    overallAqi, worstAqiSegment,
+    maxUvIndex, uvProtectionSeconds, maxPollen,
     segments, points
   };
 }
