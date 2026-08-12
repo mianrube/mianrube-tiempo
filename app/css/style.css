@@ -103,23 +103,95 @@ a:hover { opacity: .8; }
   .sidenav-item.active { background: var(--btn); color: var(--text); }
 }
 
+.chart-svg-wrap { padding: 0 8px; box-sizing: border-box; }
+
 .tiles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (min-width: 760px) {
   .tiles-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
-.main-grid { display: flex; flex-direction: column; gap: 14px; }
-.main-grid-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.hero-row { display: flex; flex-direction: column; gap: 14px; }
 @media (min-width: 1100px) {
-  .main-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 16px; align-items: start; }
+  .hero-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 16px; align-items: stretch; }
+  .hero-row .tiles-grid { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, 1fr); height: 100%; }
 }
 
-.route-grid { display: flex; flex-direction: column; gap: 14px; }
+.aq-card { display: flex; flex-direction: column; gap: 10px; }
 @media (min-width: 1100px) {
-  .route-grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
-  .route-col-a { grid-column: 1; }
-  .route-col-b { grid-column: 2; }
+  .aq-card { flex-direction: row; align-items: center; gap: 22px; flex-wrap: wrap; }
+  .aq-card .aq-label { flex: none; }
+  .aq-card .aq-main { flex: none; }
+  .aq-card .aq-pollen { flex: 1; min-width: 0; }
 }
+
+.bike-row { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .bike-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+  .bike-row-a { display: flex; }
+  .bike-row-a > div { flex: 1; }
+  .bike-row-b > div:first-child { flex: 1; display: flex; flex-direction: column; }
+  .bike-row-b > div:first-child .chart-svg-wrap { flex: 1; display: flex; align-items: center; justify-content: center; }
+}
+
+.hours-row .hour-tile:nth-child(n+6) { display: none !important; }
+@media (min-width: 1100px) {
+  .hours-row .hour-tile:nth-child(n+6) { display: flex !important; }
+}
+
+.daytabs-row .day-tab:nth-child(n+6) { display: none !important; }
+@media (min-width: 1100px) {
+  .daytabs-row .day-tab:nth-child(n+6) { display: flex !important; }
+}
+
+.hd-score { order: 1; }
+.hd-uv { order: 2; }
+.hd-aqi { order: 3; }
+@media (min-width: 1100px) {
+  .hour-detail-content { flex-direction: row !important; align-items: center !important; gap: 22px; }
+  .hour-detail-right { flex-direction: row !important; margin-left: auto; }
+  .hd-uv { order: 1; }
+  .hd-aqi { order: 2; }
+  .hd-score { order: 3; }
+}
+
+@media (min-width: 1100px) {
+  .seg-row { display: grid !important; grid-template-columns: 0.9fr max-content 0.9fr max-content 1.6fr max-content; align-items: start; padding-top: 14px; gap: 16px; }
+  .seg-left, .seg-right { display: contents !important; }
+  .seg-c1 { grid-column: 1; }
+  .seg-c2 { grid-column: 2; align-items: center !important; }
+  .seg-c3 { grid-column: 3; }
+  .seg-c4 { grid-column: 5; }
+  .seg-c5 { grid-column: 4; }
+  .seg-c6 { grid-column: 6; justify-self: center; }
+}
+
+.chart-row { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+}
+
+.sun-moon-row { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .sun-moon-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+  .sun-moon-arc { flex: 1; display: flex; align-items: center; justify-content: center; }
+}
+
+.route-top-row { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .route-top-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+}
+
+.uv-aqi-row { display: flex; gap: 10px; }
+@media (min-width: 1100px) {
+  .uv-aqi-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+}
+
+.legend-row { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .legend-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+  .legend-row > * { height: 100%; box-sizing: border-box; }
+}
+
 .mono { font-family: 'IBM Plex Mono', monospace; }
 .btn-icon {
   width: 40px; height: 40px; border-radius: 14px; background: var(--btn);
