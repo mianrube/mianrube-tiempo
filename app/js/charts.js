@@ -46,7 +46,7 @@ function axisSvg(labels, W, H, n, top, xf, P) {
 }
 
 function svgChart(W, H, inner) {
-  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" fill="none" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  return `<div style="width:100%;aspect-ratio:${W} / ${H};min-height:${H}px"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" fill="none" stroke-linecap="round" stroke-linejoin="round">${inner}</svg></div>`;
 }
 
 function scoreGauge(score, color, trackColor, mutedColor) {
@@ -65,7 +65,7 @@ function scoreGauge(score, color, trackColor, mutedColor) {
 }
 
 function tempChart(hs, P, light) {
-  const W = 352, H = 142, top = 30, bot = 20, n = hs.length;
+  const W = Math.max(352, hs.length * 15), H = 142, top = 30, bot = 20, n = hs.length;
   const vals = hs.map(h => h.t), app = hs.map(h => h.a);
   const lo = Math.min(...vals, ...app) - 1.5, hi = Math.max(...vals, ...app) + 1.5;
   const x = i => i * (W / (n - 1)), y = v => top + (H - top - bot) * (1 - (v - lo) / (hi - lo || 1));
@@ -97,7 +97,7 @@ function tempChart(hs, P, light) {
 }
 
 function windChart(hs, P, light) {
-  const W = 352, H = 158, top = 50, bot = 20, n = hs.length;
+  const W = Math.max(352, hs.length * 15), H = 158, top = 50, bot = 20, n = hs.length;
   const sp_ = hs.map(h => h.w), gu = hs.map(h => h.g);
   const hi = Math.max(Math.max(...gu) * 1.2, 10), lo = 0;
   const x = i => i * (W / (n - 1)), y = v => top + (H - top - bot) * (1 - (v - lo) / (hi - lo));
@@ -125,7 +125,7 @@ function windChart(hs, P, light) {
 }
 
 function humidChart(hs, P, light) {
-  const W = 352, H = 128, top = 26, bot = 20, n = hs.length;
+  const W = Math.max(352, hs.length * 15), H = 128, top = 26, bot = 20, n = hs.length;
   const vals = hs.map(h => h.hum);
   const x = i => i * (W / (n - 1)), y = v => top + (H - top - bot) * (1 - v / 100);
   const p = vals.map((v, i) => [x(i), y(v)]);
@@ -146,7 +146,7 @@ function humidChart(hs, P, light) {
 }
 
 function rainChart(hs, P) {
-  const W = 352, H = 134, top = 26, bot = 20, n = hs.length;
+  const W = Math.max(352, hs.length * 15), H = 134, top = 26, bot = 20, n = hs.length;
   const mm = hs.map(h => h.p), pr = hs.map(h => h.pr);
   const mmax = Math.max(Math.max(...mm), 1);
   const bw = Math.max(W / n - 16, 6);
@@ -172,7 +172,7 @@ function rainChart(hs, P) {
 }
 
 function scoreChart(hs, P, scoreStyle, scoreHue, light) {
-  const W = 352, H = 118, top = 22, bot = 20, n = hs.length;
+  const W = Math.max(352, hs.length * 15), H = 118, top = 22, bot = 20, n = hs.length;
   const bw = Math.max(W / n - (n <= 9 ? 16 : 6), 4);
   const cxOf = i => i * (W / n) + (W / n) / 2;
   let bars = '';
@@ -192,7 +192,8 @@ function elevationChart(points, segments, P, light) {
   const eles = points.map(p => p.ele);
   const lo = Math.min(...eles), hi = Math.max(...eles);
   const span = (hi - lo) || 10;
-  const x = d => (d / totalDist) * W;
+  const leftPad = 26;
+  const x = d => leftPad + (d / totalDist) * (W - leftPad);
   const y = e => top + (H - top - bot) * (1 - (e - lo) / span);
 
   const stride = Math.max(1, Math.floor(n / 400));
@@ -219,6 +220,16 @@ function elevationChart(points, segments, P, light) {
     segLines += `<line x1="${sx}" y1="${top}" x2="${sx}" y2="${(H - bot).toFixed(1)}" stroke="${P.grid}" stroke-width="1" stroke-dasharray="2 3"/>`;
   });
 
+  let segNums = '';
+  let lastNumX = -Infinity;
+  segments.forEach((seg, i) => {
+    let midX = Math.min(Math.max(x((seg.startDist + seg.endDist) / 2), leftPad + 6), W - 6);
+    if (midX - lastNumX < 12) midX = lastNumX + 12;
+    if (midX > W - 4) return;
+    lastNumX = midX;
+    segNums += `<text x="${midX.toFixed(1)}" y="${(top - 4).toFixed(1)}" fill="${P.axis}" font-size="10" font-weight="800" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${i + 1}</text>`;
+  });
+
   const kmMarks = [];
   const totalKm = totalDist / 1000;
   const step = totalKm > 80 ? 20 : totalKm > 40 ? 10 : totalKm > 15 ? 5 : totalKm > 6 ? 2 : 1;
@@ -234,11 +245,11 @@ function elevationChart(points, segments, P, light) {
   for (let i = 1; i <= eleTicks; i++) {
     const ele = lo + (i / (eleTicks + 1)) * span;
     const gy = y(ele).toFixed(1);
-    eleGrid += `<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="${P.axis}" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"/>`
+    eleGrid += `<line x1="${leftPad}" y1="${gy}" x2="${W}" y2="${gy}" stroke="${P.axis}" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"/>`
       + `<text x="4" y="${(y(ele) - 3).toFixed(1)}" fill="${P.axis}" font-size="10" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(ele)}m</text>`;
   }
 
-  const inner = axis + segLines + fills + eleGrid
+  const inner = axis + segLines + fills + eleGrid + segNums
     + `<path d="${line}" stroke="${P.axis}" stroke-width="1.6" fill="none" opacity="0.85"/>`
     + `<text x="4" y="${(top + 9).toFixed(1)}" fill="${P.axis}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(hi)}m</text>`
     + `<text x="4" y="${(H - bot - 3).toFixed(1)}" fill="${P.axis}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(lo)}m</text>`;
@@ -261,10 +272,10 @@ function windRoseChart(buckets, totalSec, P, light) {
   [0.25, 0.5, 0.75, 1].forEach(f => {
     const ringPts = [];
     for (let i = 0; i < 8; i++) { const p = pt(i, rMax * f); ringPts.push([p.x, p.y]); }
-    grid += `<path d="${closedSpline(ringPts)}" fill="none" stroke="${P.grid}" stroke-width="1" opacity="0.55"/>`;
+    grid += `<path d="${closedSpline(ringPts)}" fill="none" stroke="${P.axis}" stroke-width="1" opacity="${f === 1 ? 0.7 : 0.4}"/>`;
   });
   let spokes = '';
-  for (let i = 0; i < 8; i++) { const p = pt(i, rMax); spokes += `<line x1="${cx}" y1="${cy}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${P.grid}" stroke-width="1" opacity="0.55"/>`; }
+  for (let i = 0; i < 8; i++) { const p = pt(i, rMax); spokes += `<line x1="${cx}" y1="${cy}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${P.axis}" stroke-width="1.2" opacity="0.55"/>`; }
   const dataPts = buckets.map((v, i) => { const p = pt(i, rMax * (v / maxVal)); return [p.x, p.y]; });
   const dataShape = `<path d="${closedSpline(dataPts)}" fill="${P.tealLine}" opacity="${light ? 0.3 : 0.35}" stroke="${P.tealLine}" stroke-width="2.4" stroke-linejoin="round"/>`;
   let dots = '';
@@ -274,15 +285,21 @@ function windRoseChart(buckets, totalSec, P, light) {
   });
   const valueText = sec => Math.round(sec / (totalSec || 1) * 100) + '% · ' + Math.round(sec / 60) + ' min';
   const labelDefs = [
-    { i: 0, text: 'De cara', anchor: 'middle' }, { i: 2, text: 'Lateral dcha.', anchor: 'start' },
-    { i: 4, text: 'A favor', anchor: 'middle' }, { i: 6, text: 'Lateral izq.', anchor: 'end' }
+    { i: 0, text: 'De cara', anchor: 'middle', size: 12, vsize: 13 },
+    { i: 1, text: 'Dcha. frontal', anchor: 'start', size: 10.5, vsize: 11.5 },
+    { i: 2, text: 'Lateral dcha.', anchor: 'start', size: 12, vsize: 13 },
+    { i: 3, text: 'Dcha. trasera', anchor: 'start', size: 10.5, vsize: 11.5 },
+    { i: 4, text: 'A favor', anchor: 'middle', size: 12, vsize: 13 },
+    { i: 5, text: 'Izq. trasera', anchor: 'end', size: 10.5, vsize: 11.5 },
+    { i: 6, text: 'Lateral izq.', anchor: 'end', size: 12, vsize: 13 },
+    { i: 7, text: 'Izq. frontal', anchor: 'end', size: 10.5, vsize: 11.5 }
   ];
   let labels = '';
-  labelDefs.forEach(({ i, text, anchor }) => {
+  labelDefs.forEach(({ i, text, anchor, size, vsize }) => {
     const p = pt(i, rMax + 20);
     labels += `<text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" text-anchor="${anchor}">`
-      + `<tspan x="${p.x.toFixed(1)}" dy="-3" fill="${P.axis}" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace">${text}</tspan>`
-      + `<tspan x="${p.x.toFixed(1)}" dy="15" fill="${P.tealLine}" font-size="13" font-weight="800" font-family="'IBM Plex Mono', monospace">${valueText(buckets[i])}</tspan>`
+      + `<tspan x="${p.x.toFixed(1)}" dy="-3" fill="${P.axis}" font-size="${size}" font-weight="700" font-family="'IBM Plex Mono', monospace">${text}</tspan>`
+      + `<tspan x="${p.x.toFixed(1)}" dy="15" fill="${P.tealLine}" font-size="${vsize}" font-weight="800" font-family="'IBM Plex Mono', monospace">${valueText(buckets[i])}</tspan>`
       + `</text>`;
   });
   const inner = grid + spokes + dataShape + dots + labels;

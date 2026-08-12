@@ -2,7 +2,6 @@
   'use strict';
 
   const DEFAULT_LAT = 40.4168, DEFAULT_LON = -3.7038; // Madrid, fallback
-  const HOURS_AHEAD = 5;
   const WIND_UNIT = 'km/h';
   const dayNames = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
@@ -69,6 +68,9 @@
       if (!getStoredTheme()) { clearIconMemo(); applyTheme(); render(); }
     });
   }
+  const desktopMQ = window.matchMedia ? window.matchMedia('(min-width: 1100px)') : null;
+  function isDesktop() { return desktopMQ ? desktopMQ.matches : window.innerWidth >= 1100; }
+  if (desktopMQ) desktopMQ.addEventListener('change', () => render());
 
   window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
@@ -616,8 +618,8 @@
     const uLbl = WIND_UNIT;
     const nowKey = C.time.slice(0, 13);
     let i0 = H.time.findIndex(t => t.slice(0, 13) === nowKey); if (i0 < 0) i0 = 0;
-    const nH = Math.min(HOURS_AHEAD, H.time.length - i0 - 1);
-    const idx = []; for (let i = i0; i < i0 + nH; i++) idx.push(i);
+    const nHStrip = Math.min(10, H.time.length - i0 - 1);
+    const idxStrip = []; for (let i = i0; i < i0 + nHStrip; i++) idxStrip.push(i);
 
     const info = codeInfo(C.weather_code);
     const isDay = C.is_day === 1;
@@ -650,7 +652,7 @@
       };
     }
 
-    const hours = idx.map(i => {
+    const hours = idxStrip.map(i => {
       const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0, q = sc(i);
       const uvv = Math.round((H.uv_index ? H.uv_index[i] : 0) || 0);
       return {
@@ -668,7 +670,7 @@
         bg: cur ? 'var(--now-bg)' : 'var(--surface)', border: cur ? 'var(--now-border)' : 'var(--border)'
       };
     });
-    const chartHours = idx.map(i => ({
+    const chartHoursWide = idxStrip.map(i => ({
       hour: H.time[i].slice(11, 13) + 'h', s: hourScore(sport, H, i, cv, L), t: H.temperature_2m[i], a: H.apparent_temperature[i],
       w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
       p: H.precipitation[i] || 0, pr: H.precipitation_probability[i] || 0,
@@ -752,7 +754,8 @@
     }));
 
     const dayIdx = Math.min(st.dayIdx, D.time.length - 1);
-    const dayTabs = D.time.slice(0, 5).map((t, i) => {
+    const nDayTabs = Math.min(10, D.time.length);
+    const dayTabs = D.time.slice(0, nDayTabs).map((t, i) => {
       const dt = new Date(t + 'T12:00:00'), on = i === dayIdx;
       const pp = D.precipitation_probability_max[i] || 0, mmd = D.precipitation_sum[i] || 0;
       return {
@@ -808,7 +811,8 @@
         bg: cur ? 'var(--now-bg)' : 'transparent'
       };
     });
-    const next24Idxs = []; for (let i = i0; i < Math.min(i0 + 24, H.time.length); i++) next24Idxs.push(i);
+    const detailHoursCount = isDesktop() ? 48 : 24;
+    const next24Idxs = []; for (let i = i0; i < Math.min(i0 + detailHoursCount, H.time.length); i++) next24Idxs.push(i);
     const next24Hours = next24Idxs.map(i => ({
       hour: H.time[i].slice(11, 13) + 'h', s: hourScore(sport, H, i, cv, L), t: H.temperature_2m[i], a: H.apparent_temperature[i],
       w: cv(H.wind_speed_10m[i]), g: cv(H.wind_gusts_10m[i]), d: H.wind_direction_10m[i],
@@ -868,11 +872,11 @@
       ],
       moonPhase: mp.name, moonLit: mp.lit, hours,
       charts: [
-        { title: 'Conveniencia ' + sportLabel + ' · ' + nH + ' h', legend: [{ label: 'nota 0-100', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(chartHours, P, n => scoreStyle100(n, L), scoreHue100, L) },
-        { title: 'Temperatura · ' + nH + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(chartHours, P, L) },
-        { title: 'Humedad · ' + nH + ' h', legend: [{ label: '%', color: P.humidLine, opacity: 1 }], svg: humidChart(chartHours, P, L) },
-        { title: 'Viento y dirección · ' + nH + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(chartHours, P, L) },
-        { title: 'Lluvia · ' + nH + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(chartHours, P) }
+        { title: 'Conveniencia ' + sportLabel + ' · ' + nHStrip + ' h', legend: [{ label: 'nota 0-100', color: 'oklch(0.7 0.15 145)', opacity: 1 }], svg: scoreChart(chartHoursWide, P, n => scoreStyle100(n, L), scoreHue100, L) },
+        { title: 'Temperatura · ' + nHStrip + ' h', legend: [{ label: 'real', color: P.warmLine, opacity: 1 }, { label: 'sensación', color: P.warmSoft, opacity: 0.7 }], svg: tempChart(chartHoursWide, P, L) },
+        { title: 'Humedad · ' + nHStrip + ' h', legend: [{ label: '%', color: P.humidLine, opacity: 1 }], svg: humidChart(chartHoursWide, P, L) },
+        { title: 'Viento y dirección · ' + nHStrip + ' h', legend: [{ label: uLbl, color: P.tealLine, opacity: 1 }, { label: 'rachas', color: P.tealSoft, opacity: 0.7 }], svg: windChart(chartHoursWide, P, L) },
+        { title: 'Lluvia · ' + nHStrip + ' h', legend: [{ label: 'mm/h', color: P.rainBar, opacity: 1 }, { label: 'probabilidad', color: P.probLine, opacity: 0.8 }], svg: rainChart(chartHoursWide, P) }
       ],
       days, hasMoreDays, moreDaysLabel,
       coords: (st.fallback ? 'ubicación por defecto · ' : '') + st.lat.toFixed(3) + ', ' + st.lon.toFixed(3)
@@ -950,9 +954,9 @@
       <div style="width:6px;height:6px;border-radius:99px;background:${p.color}"></div>
       <div style="font-size:13px;font-weight:700;color:${p.color};font-family:'IBM Plex Mono',monospace">${esc(p.name)} · ${p.value} granos/m³</div>
     </div>`).join('');
-    return `<div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-      <div class="section-label" style="padding-left:2px">Calidad del aire</div>
-      <div style="display:flex;align-items:center;gap:12px">
+    return `<div class="aq-card" style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border)">
+      <div class="section-label aq-label" style="padding-left:2px">Calidad del aire</div>
+      <div class="aq-main" style="display:flex;align-items:center;gap:12px">
         <div style="display:flex;align-items:baseline;gap:4px;padding:6px 12px;border-radius:99px;background:${aq.bg};border:1px solid ${aq.border};font-family:'IBM Plex Mono',monospace;color:${aq.color}">
           <div style="font-size:20px;font-weight:800;line-height:1">${aq.aqi}</div>
           <div style="font-size:12px;font-weight:600;opacity:.75">AQI</div>
@@ -962,11 +966,20 @@
           <div style="font-size:13px;color:var(--muted);font-weight:500">PM2.5 ${aq.pm25} · PM10 ${aq.pm10} µg/m³</div>
         </div>
       </div>
-      ${aq.pollen.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${pollen}</div>` : `<div style="font-size:13.5px;color:var(--muted);font-weight:500">Sin polen relevante ahora mismo</div>`}
+      <div class="aq-pollen">${aq.pollen.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${pollen}</div>` : `<div style="font-size:13.5px;color:var(--muted);font-weight:500">Sin polen relevante ahora mismo</div>`}</div>
     </div>`;
   }
 
-  function chartCardTpl(c) {
+  function scoreLegendInlineTpl() {
+    const ordered = SCORE_TIERS.slice().sort((a, b) => a.min - b.min);
+    const chips = ordered.map(t => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="width:100%;height:6px;border-radius:99px;background:oklch(0.7 0.15 ${t.hue})"></div>
+      <div style="font-size:9.5px;font-weight:700;color:var(--muted);text-align:center;line-height:1.15;white-space:nowrap">${esc(t.label)}</div>
+    </div>`).join('');
+    return `<div style="padding-top:11px;border-top:1px solid var(--border);display:flex;gap:4px">${chips}</div>`;
+  }
+
+  function chartCardTpl(c, footer) {
     const legend = c.legend.map(l => `<div style="display:flex;align-items:center;gap:5px">
       <div style="width:14px;height:3px;border-radius:99px;background:${l.color};opacity:${l.opacity}"></div>
       <div style="font-size:12px;font-weight:600;color:var(--muted)">${esc(l.label)}</div>
@@ -976,7 +989,8 @@
         <div style="font-size:13.5px;font-weight:800;letter-spacing:.02em">${esc(c.title)}</div>
         <div style="display:flex;align-items:center;gap:10px">${legend}</div>
       </div>
-      <div>${c.svg}</div>
+      <div class="chart-svg-wrap">${c.svg}</div>
+      ${footer || ''}
     </div>`;
   }
 
@@ -1036,7 +1050,7 @@
       </div>`).join('')}
     </div>`;
 
-    const hours = v.hours.map(h => `<div style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:${h.bg};border:1px solid ${h.border};display:flex;flex-direction:column;align-items:center;gap:6px">
+    const hours = v.hours.map(h => `<div class="hour-tile" style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:${h.bg};border:1px solid ${h.border};display:flex;flex-direction:column;align-items:center;gap:6px">
       <div style="font-size:12.5px;font-weight:700;color:var(--muted);font-family:'IBM Plex Mono',monospace">${esc(h.hour)}</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:3px;min-width:34px;padding:2px 4px;border-radius:8px;background:${h.scoreBg};border:1px solid ${h.scoreBorder}">
         <div style="display:flex">${h.sportIcon}</div>
@@ -1065,7 +1079,9 @@
       </div>
     </div>`).join('');
 
-    const charts = v.charts.map(chartCardTpl).join('');
+    const convenienceChart = v.charts[0] ? chartCardTpl(v.charts[0], scoreLegendInlineTpl()) : '';
+    const tempHumidRow = `<div class="chart-row">${v.charts[1] ? chartCardTpl(v.charts[1]) : ''}${v.charts[2] ? chartCardTpl(v.charts[2]) : ''}</div>`;
+    const windRainRow = `<div class="chart-row">${v.charts[3] ? chartCardTpl(v.charts[3]) : ''}${v.charts[4] ? chartCardTpl(v.charts[4]) : ''}</div>`;
 
     const days = v.days.map((d, i) => `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid ${d.sep}">
       <div style="width:52px;flex:none;display:flex;flex-direction:column">
@@ -1089,48 +1105,53 @@
     </div>`).join('');
 
     return `<div style="display:flex;flex-direction:column;gap:14px">
-      <div style="position:relative;padding:20px;border-radius:26px;background:linear-gradient(165deg, var(--hero-a) 0%, var(--hero-b) 100%);border:1px solid var(--hero-border);overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
-          <div style="display:flex;flex-direction:column;gap:2px">
-            <div style="display:flex;align-items:flex-start;gap:2px">
-              <div style="font-size:74px;font-weight:800;line-height:.9;letter-spacing:-.045em;font-family:'IBM Plex Mono',monospace">${v.temp}</div>
-              <div style="font-size:26px;font-weight:600;margin-top:6px;color:var(--text-soft)">°C</div>
+      <div class="hero-row">
+        <div style="position:relative;padding:20px;border-radius:26px;background:linear-gradient(165deg, var(--hero-a) 0%, var(--hero-b) 100%);border:1px solid var(--hero-border);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:flex-start;gap:2px">
+                <div style="font-size:74px;font-weight:800;line-height:.9;letter-spacing:-.045em;font-family:'IBM Plex Mono',monospace">${v.temp}</div>
+                <div style="font-size:26px;font-weight:600;margin-top:6px;color:var(--text-soft)">°C</div>
+              </div>
+              <div style="font-size:16px;font-weight:700;margin-top:6px">${esc(v.condition)}</div>
+              <div style="font-size:14.5px;color:var(--muted);font-weight:500">Sensación de ${v.feels}°C</div>
             </div>
-            <div style="font-size:16px;font-weight:700;margin-top:6px">${esc(v.condition)}</div>
-            <div style="font-size:14.5px;color:var(--muted);font-weight:500">Sensación de ${v.feels}°C</div>
+            <div style="flex:none">${v.bigIcon}</div>
           </div>
-          <div style="flex:none">${v.bigIcon}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hero-border)">
-          <div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:700"><span style="color:var(--hot)">▲</span>${esc(v.tmaxLabel)}</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:700"><span style="color:var(--cold)">▼</span>${esc(v.tminLabel)}</div>
-          <div style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:4px 9px 4px 7px;border-radius:99px;background:${v.uvBg};border:1px solid ${v.uvBorder}">
-            <div style="width:7px;height:7px;border-radius:99px;background:${v.uvColor}"></div>
-            <div style="font-size:13px;font-weight:800;color:${v.uvColor};font-family:'IBM Plex Mono',monospace">UV ${v.uv}</div>
-            <div style="font-size:13px;font-weight:600;color:var(--text-soft)">${esc(v.uvLabel)}</div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hero-border)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:700"><span style="color:var(--hot)">▲</span>${esc(v.tmaxLabel)}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:700"><span style="color:var(--cold)">▼</span>${esc(v.tminLabel)}</div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:4px 9px 4px 7px;border-radius:99px;background:${v.uvBg};border:1px solid ${v.uvBorder}">
+              <div style="width:7px;height:7px;border-radius:99px;background:${v.uvColor}"></div>
+              <div style="font-size:13px;font-weight:800;color:${v.uvColor};font-family:'IBM Plex Mono',monospace">UV ${v.uv}</div>
+              <div style="font-size:13px;font-weight:600;color:var(--text-soft)">${esc(v.uvLabel)}</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tiles}</div>
+        <div class="tiles-grid">${tiles}</div>
+      </div>
 
       ${airQualityCardTpl(v.airQuality)}
 
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;gap:6px">${sportChipsTpl(v.sportChips, false)}</div>
-        ${actCardTpl(v.act)}
-      </div>
+      <div style="display:flex;gap:6px">${sportChipsTpl(v.sportChips, false)}</div>
 
-      <div class="clickable" data-action="openRoute" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:18px;background:var(--surface);border:1px solid var(--border)">
-        <div style="flex:none;color:var(--live);display:flex">${uiIcon('route', 20)}</div>
-        <div style="flex:1;display:flex;flex-direction:column;min-width:0;gap:1px">
-          <div style="font-size:14.5px;font-weight:800">Analiza tu ruta</div>
-          <div style="font-size:13px;color:var(--muted);font-weight:500">Sube el track (GPX o TCX) y valora el tiempo tramo a tramo, con mapa y altimetría</div>
+      <div class="bike-row">
+        <div class="bike-row-a">${actCardTpl(v.act)}</div>
+        <div class="bike-row-b" style="display:flex;flex-direction:column;gap:14px">
+          ${convenienceChart}
+          <div class="clickable" data-action="openRoute" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:18px;background:var(--surface);border:1px solid var(--border)">
+            <div style="flex:none;color:var(--live);display:flex">${uiIcon('route', 20)}</div>
+            <div style="flex:1;display:flex;flex-direction:column;min-width:0;gap:1px">
+              <div style="font-size:14.5px;font-weight:800">Analiza tu ruta</div>
+              <div style="font-size:13px;color:var(--muted);font-weight:500">Sube el track (GPX o TCX) y valora el tiempo tramo a tramo, con mapa y altimetría</div>
+            </div>
+            <div style="margin-left:auto;flex:none;color:var(--muted);display:flex;transform:rotate(-90deg)">${uiIcon('chevronDown', 16)}</div>
+          </div>
         </div>
-        <div style="margin-left:auto;flex:none;color:var(--muted);display:flex;transform:rotate(-90deg)">${uiIcon('chevronDown', 16)}</div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:9px">
+      <div class="hours-row" style="display:flex;flex-direction:column;gap:9px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-left:2px">
           <div class="section-label">Próximas horas</div>
           <div class="pill-btn" data-action="openHours">${uiIcon('expand', 14)}Ver todas</div>
@@ -1138,19 +1159,23 @@
         <div style="display:flex;gap:6px">${hours}</div>
       </div>
 
-      ${charts}
+      ${tempHumidRow}
 
-      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
-        <div class="section-label" style="padding-left:2px">Sol</div>
-        ${v.sunArc}
-        ${riseSetRowTpl(v.sunRiseSet)}
-      </div>
+      ${windRainRow}
 
-      <div style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-        <div class="section-label" style="padding-left:2px">Luna</div>
-        ${v.moonArcOk ? v.moonArc : ''}
-        ${riseSetRowTpl(v.moonRiseSet)}
-        <div style="padding-top:11px;border-top:1px solid var(--border);font-size:13.5px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit} % iluminada</div>
+      <div class="sun-moon-row">
+        <div class="sun-moon-a" style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+          <div class="section-label" style="padding-left:2px">Sol</div>
+          <div class="sun-moon-arc">${v.sunArc}</div>
+          ${riseSetRowTpl(v.sunRiseSet)}
+        </div>
+
+        <div class="sun-moon-b" style="padding:14px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+          <div class="section-label" style="padding-left:2px">Luna</div>
+          <div class="sun-moon-arc">${v.moonArcOk ? v.moonArc : ''}</div>
+          ${riseSetRowTpl(v.moonRiseSet)}
+          <div style="padding-top:11px;border-top:1px solid var(--border);font-size:13.5px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit} % iluminada</div>
+        </div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:9px">
@@ -1164,7 +1189,7 @@
   }
 
   function hoursViewTpl(v) {
-    const dayTabs = v.dayTabs.map(t => `<div class="clickable" data-action="pickDay" data-day="${t.i}" style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:${t.bg};border:1px solid ${t.border};display:flex;flex-direction:column;align-items:center;gap:6px">
+    const dayTabs = v.dayTabs.map(t => `<div class="clickable day-tab" data-action="pickDay" data-day="${t.i}" style="flex:1 1 0;min-width:0;padding:10px 4px 11px;border-radius:16px;background:${t.bg};border:1px solid ${t.border};display:flex;flex-direction:column;align-items:center;gap:6px">
       <div style="display:flex;flex-direction:column;align-items:center">
         <div style="font-size:13px;font-weight:800;color:${t.color}">${esc(t.label)}</div>
         <div style="font-size:11px;font-weight:600;color:var(--muted2);font-family:'IBM Plex Mono',monospace">${esc(t.date)}</div>
@@ -1196,32 +1221,32 @@
           <div style="font-size:14px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">${r.hour}</div>
           <div style="display:flex">${r.icon}</div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:9px;flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="display:flex;flex-direction:column;min-width:0;flex:1;gap:1px">
-              <div style="display:flex;align-items:baseline;gap:5px;font-family:'IBM Plex Mono',monospace">
-                <div style="font-size:17px;font-weight:800">${r.temp}°</div>
-                <div style="font-size:13px;font-weight:600;color:var(--warm)">ST ${r.feels}°</div>
-              </div>
-              <div style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
+        <div class="hour-detail-content" style="display:flex;flex-direction:column;gap:9px;flex:1;min-width:0">
+          <div style="display:flex;flex-direction:column;min-width:0;gap:1px">
+            <div style="display:flex;align-items:baseline;gap:5px;font-family:'IBM Plex Mono',monospace">
+              <div style="font-size:17px;font-weight:800">${r.temp}°</div>
+              <div style="font-size:13px;font-weight:600;color:var(--warm)">ST ${r.feels}°</div>
             </div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 9px;border-radius:10px;background:${r.scoreBg};border:1px solid ${r.scoreBorder};flex:none">
-              <div style="display:flex">${r.sportIcon}</div>
-              <div style="font-size:14.5px;font-weight:800;color:${r.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${r.score}</div>
-            </div>
+            <div style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:5px;color:var(--teal);font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          <div style="display:flex;align-items:center;gap:5px;color:var(--teal);font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none">
             <span style="display:flex;flex:none">${r.arrow}</span>${r.dir} ${r.wind} km/h · racha ${r.gust} km/h
           </div>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;flex:none">
             <div style="display:inline-flex;align-items:center;gap:4px;color:${r.probColor};font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap">
               <span style="display:flex">${uiIcon('drop', 14, r.probColor)}</span>${r.prob} · ${r.mm}
             </div>
             <div style="display:inline-flex;align-items:center;gap:4px;color:${r.humColor};font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap">
               <span style="display:flex">${uiIcon('humid', 14, r.humColor)}</span>${r.hum != null ? r.hum + ' %' : '—'}
             </div>
-            <div style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;background:${r.uvStyle.bg};border:1px solid ${r.uvStyle.border};color:${r.uvStyle.color};font-size:12px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">UV ${r.uv}</div>
-            ${r.aqiStyle ? `<div style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;background:${r.aqiStyle.bg};border:1px solid ${r.aqiStyle.border};color:${r.aqiStyle.color};font-size:12px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">AQI ${r.aqi}</div>` : ''}
+          </div>
+        </div>
+        <div class="hour-detail-right" style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+          <div class="hd-uv" style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;background:${r.uvStyle.bg};border:1px solid ${r.uvStyle.border};color:${r.uvStyle.color};font-size:12px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">UV ${r.uv}</div>
+          ${r.aqiStyle ? `<div class="hd-aqi" style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;background:${r.aqiStyle.bg};border:1px solid ${r.aqiStyle.border};color:${r.aqiStyle.color};font-size:12px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">AQI ${r.aqi}</div>` : ''}
+          <div class="hd-score" style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 9px;border-radius:10px;background:${r.scoreBg};border:1px solid ${r.scoreBorder};flex:none">
+            <div style="display:flex">${r.sportIcon}</div>
+            <div style="font-size:14.5px;font-weight:800;color:${r.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${r.score}</div>
           </div>
         </div>
       </div>
@@ -1234,7 +1259,7 @@
         <div style="margin-left:auto;display:flex;gap:6px">${sportChipsTpl(v.sportChips, true)}</div>
       </div>
 
-      <div style="display:flex;gap:6px">${dayTabs}</div>
+      <div class="daytabs-row" style="display:flex;gap:6px">${dayTabs}</div>
 
       ${charts}
 
@@ -1369,6 +1394,7 @@
         speed: Math.round(seg.speedKmh) + ' km/h',
         grade: (seg.gradeFraction * 100).toFixed(1) + ' %',
         score: seg.score, scoreColor: ss.color, scoreBg: ss.bg, scoreBorder: ss.border,
+        sportIcon: uiIcon(result.sport === 'bike' ? 'bike' : 'run', 11, ss.color),
         icon: wIcon(seg.weatherInput.weatherCode, true, 22, P),
         temp: Math.round(seg.weatherInput.temperature) + '°',
         feels: Math.round(seg.weatherInput.apparentTemperature) + '°',
@@ -1378,6 +1404,7 @@
         compassSvg: windCompassSvg(((seg.windDirection || 0) - seg.bearingDeg + 360) % 360, result.sport, relColor, 58),
         prob: Math.round(seg.weatherInput.precipitationProbability || 0),
         probColor: probColor(seg.weatherInput.precipitationProbability || 0, L),
+        mm: (seg.weatherInput.precipitation || 0) > 0 ? (seg.weatherInput.precipitation).toFixed(1) + ' mm' : '—',
         uv, uvStyle, aqi, aqiStyle
       };
     });
@@ -1609,7 +1636,7 @@
   }
 
   function routeUvCardTpl(v) {
-    const uvChip = `<div style="display:inline-flex;align-self:flex-start;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:${v.maxUvStyle.bg};border:1px solid ${v.maxUvStyle.border};color:${v.maxUvStyle.color};font-size:14.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">${v.maxUv} · ${esc(v.maxUvStyle.label)}</div>`;
+    const uvChip = `<div style="display:inline-flex;align-self:flex-start;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:${v.maxUvStyle.bg};border:1px solid ${v.maxUvStyle.border};color:${v.maxUvStyle.color};font-size:14.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">UV ${v.maxUv} · ${esc(v.maxUvStyle.label)}</div>`;
     const uvText = v.uvProtectionLabel
       ? `Protección solar recomendada ~${v.uvProtectionLabel} de la ruta.`
       : 'Sin necesidad relevante de protección solar.';
@@ -1625,7 +1652,7 @@
       ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">${v.pollen.map(p => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;background:${p.bg};border:1px solid ${p.border};font-size:12px;font-weight:700;color:${p.color}">${esc(p.name)} ${p.value}</div>`).join('')}</div>`
       : '';
     const body = v.hasAqi
-      ? `<div style="display:inline-flex;align-self:flex-start;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:${v.aqiStyle.bg};border:1px solid ${v.aqiStyle.border};color:${v.aqiStyle.color};font-size:14.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">${v.overallAqi} · ${esc(v.aqiStyle.label)}</div>
+      ? `<div style="display:inline-flex;align-self:flex-start;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:${v.aqiStyle.bg};border:1px solid ${v.aqiStyle.border};color:${v.aqiStyle.color};font-size:14.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">AQI ${v.overallAqi} · ${esc(v.aqiStyle.label)}</div>
         <div style="font-size:13.5px;color:var(--text-soft);font-weight:500">${v.worstAqiValue != null && v.worstAqiValue > v.overallAqi + 10 ? `Peor en el km ${v.worstAqiKm} (AQI ${v.worstAqiValue}).` : 'Estable en toda la ruta.'}</div>
         ${pollenHtml}`
       : `<div style="font-size:13px;color:var(--muted);font-weight:600">No disponible para estas fechas (fuera de horizonte de previsión)</div>`;
@@ -1636,29 +1663,38 @@
   }
 
   function routeResultTpl(v) {
-    const rows = v.segments.map(s => `<div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
-      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
-        <div style="font-size:13.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">Tramo ${s.n} · ${s.kmRange}</div>
-        <div style="font-size:12px;font-weight:600;color:var(--muted)">${s.arrival} · ${s.speed} · pend. ${s.grade} · lluvia <span style="color:${s.probColor}">${s.prob} %</span></div>
-        <div style="display:flex;align-items:center;gap:6px">
+    const rows = v.segments.map(s => `<div class="seg-row" style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <div class="seg-left" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+        <div class="seg-c1" style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:13.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">Tramo ${s.n}</div>
+          <div style="font-size:11.5px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">${s.kmRange}</div>
+        </div>
+        <div class="seg-c2" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
           <div style="display:flex">${s.icon}</div>
           <div style="font-size:13.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">${s.temp}</div>
           <div style="font-size:12px;font-weight:600;color:var(--muted);font-family:'IBM Plex Mono',monospace">ST ${s.feels}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;color:var(--teal);font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">
-          real: <span style="display:flex">${s.arrow}</span>${s.dir} – ${s.absWind} · r ${s.absGust}
+        <div class="seg-c3" style="display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:600;color:var(--muted)">
+          <div>${s.arrival} · ${s.speed}</div>
+          <div>pend. ${s.grade} · lluvia <span style="color:${s.probColor}">${s.prob} %</span> · ${s.mm}</div>
         </div>
-        <div style="font-size:12.5px;font-weight:700;color:${s.relColor};font-family:'IBM Plex Mono',monospace">rel.: ${s.relText}</div>
-        ${(s.uvStyle || s.aqiStyle) ? `<div style="display:flex;gap:5px;margin-top:1px">
-          ${s.uvStyle ? `<div style="padding:1px 7px;border-radius:99px;background:${s.uvStyle.bg};border:1px solid ${s.uvStyle.border};color:${s.uvStyle.color};font-size:11.5px;font-weight:800">UV ${s.uv}</div>` : ''}
-          ${s.aqiStyle ? `<div style="padding:1px 7px;border-radius:99px;background:${s.aqiStyle.bg};border:1px solid ${s.aqiStyle.border};color:${s.aqiStyle.color};font-size:11.5px;font-weight:800">AQI ${s.aqi}</div>` : ''}
-        </div>` : ''}
+        <div class="seg-c4" style="display:flex;flex-direction:column;gap:2px">
+          <div style="display:flex;align-items:center;gap:4px;color:var(--teal);font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">
+            real: <span style="display:flex">${s.arrow}</span>${s.dir} – ${s.absWind} · r ${s.absGust}
+          </div>
+          <div style="font-size:12.5px;font-weight:700;color:${s.relColor};font-family:'IBM Plex Mono',monospace">rel.: ${s.relText}</div>
+        </div>
       </div>
-      <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:8px">
-        <div style="display:flex;align-items:center;padding:3px 10px;border-radius:99px;background:${s.scoreBg};border:1px solid ${s.scoreBorder}">
-          <div style="font-size:14.5px;font-weight:800;color:${s.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${s.score}</div>
+      <div class="seg-right" style="flex:none;display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="seg-c5" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;background:${s.scoreBg};border:1px solid ${s.scoreBorder}">
+            <div style="display:flex">${s.sportIcon}</div>
+            <div style="font-size:14.5px;font-weight:800;color:${s.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${s.score}</div>
+          </div>
+          ${s.uvStyle ? `<div style="padding:1px 7px;border-radius:99px;background:${s.uvStyle.bg};border:1px solid ${s.uvStyle.border};color:${s.uvStyle.color};font-size:11.5px;font-weight:800;white-space:nowrap">UV ${s.uv}</div>` : ''}
+          ${s.aqiStyle ? `<div style="padding:1px 7px;border-radius:99px;background:${s.aqiStyle.bg};border:1px solid ${s.aqiStyle.border};color:${s.aqiStyle.color};font-size:11.5px;font-weight:800;white-space:nowrap">AQI ${s.aqi}</div>` : ''}
         </div>
-        <div>${s.compassSvg}</div>
+        <div class="seg-c6">${s.compassSvg}</div>
       </div>
     </div>`).join('');
 
@@ -1677,53 +1713,58 @@
              <div class="clickable" data-action="startEditRouteName" style="flex:none;padding:6px;display:flex;color:var(--muted)">${uiIcon('edit', 15)}</div>`}
       </div>
 
-      <div style="padding:16px;border-radius:22px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div style="flex:none;width:150px">${v.overallGauge}</div>
-          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
-            <div style="font-size:13.5px;font-weight:700;color:var(--muted)">Nota global · ponderada por tiempo</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:13px;font-weight:700;font-family:'IBM Plex Mono',monospace">
-              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.distanceLabel}</div>
-              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.durationLabel}</div>
-              <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.startLabel} → ${v.arrivalLabel}</div>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:13px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--muted)">
-              <div>▲ ${v.elevGain}m</div><div>▼ ${v.elevLoss}m</div><div>ritmo base ${v.paceKmh} km/h</div>${v.reversed ? '<div style="color:var(--live)">↺ sentido invertido</div>' : ''}
+      <div class="route-top-row">
+        <div class="route-top-a" style="padding:16px;border-radius:22px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="flex:none;width:150px">${v.overallGauge}</div>
+            <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+              <div style="font-size:13.5px;font-weight:700;color:var(--muted)">Nota global · ponderada por tiempo</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:13px;font-weight:700;font-family:'IBM Plex Mono',monospace">
+                <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.distanceLabel}</div>
+                <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.durationLabel}</div>
+                <div style="padding:4px 9px;border-radius:99px;background:var(--btn)">${v.startLabel} → ${v.arrivalLabel}</div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:13px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--muted)">
+                <div>▲ ${v.elevGain}m</div><div>▼ ${v.elevLoss}m</div><div>ritmo base ${v.paceKmh} km/h</div>${v.reversed ? '<div style="color:var(--live)">↺ sentido invertido</div>' : ''}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div style="padding:14px 16px;border-radius:20px;background:${v.worstBg};border:1px solid ${v.worstBorder};display:flex;flex-direction:column;gap:6px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-          <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${v.worstColor}">Tramo más duro · km ${v.worstKm}</div>
-          <div style="font-size:15px;font-weight:800;color:${v.worstColor};font-family:'IBM Plex Mono',monospace">${v.worstScore}/100</div>
+        <div class="route-top-b" style="padding:14px 16px;border-radius:20px;background:${v.worstBg};border:1px solid ${v.worstBorder};display:flex;flex-direction:column;gap:6px;justify-content:center">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${v.worstColor}">Tramo más duro · km ${v.worstKm}</div>
+            <div style="font-size:15px;font-weight:800;color:${v.worstColor};font-family:'IBM Plex Mono',monospace">${v.worstScore}/100</div>
+          </div>
+          <div style="font-size:14px;color:var(--text-soft);font-weight:500">Sobre las ${v.worstArrival} · ${esc(v.worstNote)}</div>
         </div>
-        <div style="font-size:14px;color:var(--text-soft);font-weight:500">Sobre las ${v.worstArrival} · ${esc(v.worstNote)}</div>
       </div>
 
-      <div style="display:flex;gap:10px">${routeUvCardTpl(v)}${routeAqiCardTpl(v)}</div>
+      <div class="uv-aqi-row">${routeUvCardTpl(v)}${routeAqiCardTpl(v)}</div>
 
-      ${scoreLegendCardTpl()}
+      <div class="legend-row">${scoreLegendCardTpl()}${routeLegendNoteTpl()}</div>
 
-      <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-        <div style="font-size:13.5px;font-weight:800;padding:0 2px">Altimetría y puntuación por tramo</div>
-        <div>${v.elevationSvg}</div>
+      <div class="chart-row">
+        <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:13.5px;font-weight:800;padding:0 2px">Altimetría y puntuación por tramo</div>
+          <div>${v.elevationSvg}</div>
+        </div>
+
+        <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:13.5px;font-weight:800;padding:0 2px">Viento por dirección relativa · tiempo total</div>
+          <div>${v.windRoseSvg}</div>
+        </div>
       </div>
 
-      <div style="padding:15px 14px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-        <div style="font-size:13.5px;font-weight:800;padding:0 2px">Viento por dirección relativa · tiempo total</div>
-        <div>${v.windRoseSvg}</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="border-radius:20px;overflow:hidden;border:1px solid var(--border)">
+          <div id="routeMap" style="height:440px;background:var(--surface)"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);font-weight:600;padding:0 4px;text-align:center">Las flechas muestran de dónde sopla el viento real en cada tramo</div>
       </div>
-
-      <div style="border-radius:20px;overflow:hidden;border:1px solid var(--border)">
-        <div id="routeMap" style="height:440px;background:var(--surface)"></div>
-      </div>
-      <div style="font-size:12px;color:var(--muted);font-weight:600;padding:0 4px;text-align:center">Las flechas muestran de dónde sopla el viento real en cada tramo</div>
 
       <div style="display:flex;flex-direction:column;gap:9px">
         <div class="section-label" style="padding-left:2px">Detalle por tramos</div>
-        ${routeLegendNoteTpl()}
         <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">${rows}</div>
       </div>
 
@@ -1809,6 +1850,22 @@
 
   /* ---------- render ---------- */
 
+  function sideNavTpl() {
+    const items = [
+      { key: 'main', label: 'Ahora', action: 'backToMain', icon: 'sunToggle' },
+      { key: 'hours', label: 'Horas', action: 'openHours', icon: 'expand' },
+      { key: 'route', label: 'Ruta', action: 'openRoute', icon: 'route' },
+      { key: 'location', label: 'Ubicación', action: 'openLocation', icon: 'pin' }
+    ];
+    const rows = items.map(it => `<div class="clickable sidenav-item${state.view === it.key ? ' active' : ''}" data-action="${it.action}">
+      <span style="display:flex">${uiIcon(it.icon, 18)}</span><span>${esc(it.label)}</span>
+    </div>`).join('');
+    return `<nav class="sidenav">
+      <div style="font-size:13px;font-weight:800;letter-spacing:-.01em;padding:6px 12px 14px">mianrube tiempo</div>
+      ${rows}
+    </nav>`;
+  }
+
   function render() {
     applyTheme();
     let body;
@@ -1821,7 +1878,7 @@
       body = state.view === 'hours' ? hoursViewTpl(v) : mainViewTpl(v);
     } else body = '';
 
-    document.getElementById('app').innerHTML = `<div class="page"><div class="container">${headerTpl()}${body}</div></div>`;
+    document.getElementById('app').innerHTML = `<div class="page"><div class="shell">${sideNavTpl()}<div class="container">${headerTpl()}${body}</div></div></div>`;
 
     if (state.view === 'route' && state.route.step === 'result' && state.route.result) {
       setTimeout(() => { initRouteMap(state.route.result).catch(err => console.error('[route] map init failed', err)); }, 0);
