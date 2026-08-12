@@ -39,7 +39,7 @@ function axisSvg(labels, W, H, n, top, xf, P) {
     if (i % step) return;
     const x = xf ? xf(i) : i * (W / (n - 1));
     const cx = Math.min(Math.max(x, 9), W - 9);
-    out += `<text x="${cx.toFixed(1)}" y="${H - 3}" fill="${P.axis}" font-size="9" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${lb}</text>`;
+    out += `<text x="${cx.toFixed(1)}" y="${H - 3}" fill="${P.axis}" font-size="10.5" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${lb}</text>`;
     out += `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${H - 15}" stroke="${P.grid}" stroke-width="1" stroke-dasharray="2 4"/>`;
   });
   return out;
@@ -59,7 +59,7 @@ function scoreGauge(score, color, trackColor, mutedColor) {
     <path d="${arcD}" fill="none" stroke="${trackColor}" stroke-width="${sw}" stroke-linecap="round"/>
     <path d="${arcD}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${dash} ${gap}"/>
     <text x="${cx}" y="${cy - 22}" text-anchor="middle" font-size="42" font-weight="800" font-family="'IBM Plex Mono', monospace" fill="${color}">${Math.round(score)}</text>
-    <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="12" font-weight="700" font-family="Manrope, Helvetica, sans-serif" fill="${mutedColor}">de 100</text>
+    <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="13" font-weight="700" font-family="Manrope, Helvetica, sans-serif" fill="${mutedColor}">de 100</text>
   `;
   return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">${inner}</svg>`;
 }
@@ -79,12 +79,12 @@ function tempChart(hs, P, light) {
     if (n <= 9 || i % 3 === 0) {
       const cx = Math.min(Math.max(x(i), 13), W - 13);
       const label = n <= 9 ? v.toFixed(1) + '°' : Math.round(v) + '°';
-      marks += `<text x="${cx.toFixed(1)}" y="${(y(v) + up).toFixed(1)}" fill="${P.warmText}" font-size="${n <= 9 ? 11 : 9.5}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${label}</text>`;
+      marks += `<text x="${cx.toFixed(1)}" y="${(y(v) + up).toFixed(1)}" fill="${P.warmText}" font-size="${n <= 9 ? 12 : 11}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${label}</text>`;
       const diff = app[i] - v;
       if (Math.abs(diff) > 2) { // solo si difiere lo bastante de la real, para no saturar el hueco entre líneas
         const appUp = diff > 0 ? -8 : 14; // sensación por encima de la real -> etiqueta arriba; por debajo -> abajo
         const appLabel = (n <= 9 ? app[i].toFixed(1) : Math.round(app[i])) + '°';
-        marks += `<text x="${cx.toFixed(1)}" y="${(y(app[i]) + appUp).toFixed(1)}" fill="${P.warmSoft}" font-size="${n <= 9 ? 9.5 : 8.5}" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${appLabel}</text>`;
+        marks += `<text x="${cx.toFixed(1)}" y="${(y(app[i]) + appUp).toFixed(1)}" fill="${P.warmSoft}" font-size="${n <= 9 ? 11 : 10}" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${appLabel}</text>`;
       }
     }
   });
@@ -109,9 +109,9 @@ function windChart(hs, P, light) {
     const cx = Math.min(Math.max(x(i), 13), W - 13);
     if (i % st === 0) {
       arrows += `<g transform="translate(${(cx - 8).toFixed(1)},-1)">${windArrow(hs[i].d, 16, P.tealLine)}</g>`;
-      arrows += `<text x="${cx.toFixed(1)}" y="24" fill="${P.axis}" font-size="9" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${DIRS[Math.round((hs[i].d % 360) / 45) % 8]}</text>`;
-      arrows += `<text x="${cx.toFixed(1)}" y="${(y(hs[i].w) - 8).toFixed(1)}" fill="${P.tealText}" font-size="${dense ? 10.5 : 9.5}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(hs[i].w)}</text>`;
-      if (dense) arrows += `<text x="${cx.toFixed(1)}" y="${(y(hs[i].g) - 6).toFixed(1)}" fill="${P.tealSoft}" font-size="9" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(hs[i].g)}</text>`;
+      arrows += `<text x="${cx.toFixed(1)}" y="24" fill="${P.axis}" font-size="10.5" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${DIRS[Math.round((hs[i].d % 360) / 45) % 8]}</text>`;
+      arrows += `<text x="${cx.toFixed(1)}" y="${(y(hs[i].w) - 8).toFixed(1)}" fill="${P.tealText}" font-size="${dense ? 12 : 11}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(hs[i].w)}</text>`;
+      if (dense) arrows += `<text x="${cx.toFixed(1)}" y="${(y(hs[i].g) - 6).toFixed(1)}" fill="${P.tealSoft}" font-size="10.5" font-weight="600" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(hs[i].g)}</text>`;
     }
     arrows += `<circle cx="${x(i).toFixed(1)}" cy="${y(hs[i].w).toFixed(1)}" r="${dense ? 3.2 : 2.2}" fill="${P.dot}" stroke="${P.tealLine}" stroke-width="2"/>`;
   }
@@ -135,7 +135,7 @@ function humidChart(hs, P, light) {
     marks += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${n <= 9 ? 3.4 : 2.4}" fill="${P.dot}" stroke="${P.humidLine}" stroke-width="2"/>`;
     if (n <= 9 || i % 3 === 0) {
       const cx = Math.min(Math.max(x(i), 13), W - 13);
-      marks += `<text x="${cx.toFixed(1)}" y="${(y(v) - 8).toFixed(1)}" fill="${P.humidText}" font-size="${n <= 9 ? 11 : 9.5}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(v)}%</text>`;
+      marks += `<text x="${cx.toFixed(1)}" y="${(y(v) - 8).toFixed(1)}" fill="${P.humidText}" font-size="${n <= 9 ? 12 : 11}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${Math.round(v)}%</text>`;
     }
   });
   const inner = axisSvg(hs.map(h => h.hour), W, H, n, top - 10, null, P)
@@ -155,14 +155,14 @@ function rainChart(hs, P) {
   mm.forEach((v, i) => {
     const h = v <= 0 ? 0 : Math.max((H - top - bot) * (v / mmax), 3);
     bars += `<rect x="${(cxOf(i) - bw / 2).toFixed(1)}" y="${(H - bot - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${P.rainBar}" opacity="0.8"/>`;
-    if (v > 0 && n <= 9) bars += `<text x="${cxOf(i).toFixed(1)}" y="${(H - bot - h - 4).toFixed(1)}" fill="${P.probText}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${v.toFixed(1)}</text>`;
+    if (v > 0 && n <= 9) bars += `<text x="${cxOf(i).toFixed(1)}" y="${(H - bot - h - 4).toFixed(1)}" fill="${P.probText}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${v.toFixed(1)}</text>`;
   });
   const y = v => top + (H - top - bot) * (1 - v / 100);
   const pl = sp(pr.map((v, i) => [cxOf(i), y(v)]));
   let dots = '';
   pr.forEach((v, i) => {
     dots += `<circle cx="${cxOf(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${n <= 9 ? 3 : 2.2}" fill="${P.dot}" stroke="${P.probLine}" stroke-width="2"/>`;
-    if (n <= 9 || i % 3 === 0) dots += `<text x="${cxOf(i).toFixed(1)}" y="${(y(v) - 8).toFixed(1)}" fill="${P.probText}" font-size="${n <= 9 ? 10 : 9}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${v}%</text>`;
+    if (n <= 9 || i % 3 === 0) dots += `<text x="${cxOf(i).toFixed(1)}" y="${(y(v) - 8).toFixed(1)}" fill="${P.probText}" font-size="${n <= 9 ? 11 : 10.5}" font-weight="700" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${v}%</text>`;
   });
   const inner = axisSvg(hs.map(h => h.hour), W, H, n, top - 12, cxOf, P)
     + bars
@@ -179,7 +179,7 @@ function scoreChart(hs, P, scoreStyle, scoreHue, light) {
   hs.forEach((o, i) => {
     const st = scoreStyle(o.s), h = Math.max((H - top - bot) * (o.s / 100), 3);
     bars += `<rect x="${(cxOf(i) - bw / 2).toFixed(1)}" y="${(H - bot - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="oklch(0.7 0.15 ${scoreHue(o.s)})" opacity="${light ? 0.9 : 0.85}"/>`;
-    if (n <= 9 || i % 3 === 0) bars += `<text x="${cxOf(i).toFixed(1)}" y="${(H - bot - h - 5).toFixed(1)}" fill="${st.color}" font-size="${n <= 9 ? 11 : 9}" font-weight="800" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${o.s}</text>`;
+    if (n <= 9 || i % 3 === 0) bars += `<text x="${cxOf(i).toFixed(1)}" y="${(H - bot - h - 5).toFixed(1)}" fill="${st.color}" font-size="${n <= 9 ? 12 : 10.5}" font-weight="800" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${o.s}</text>`;
   });
   const inner = axisSvg(hs.map(o => o.hour), W, H, n, top - 8, cxOf, P) + bars;
   return svgChart(W, H, inner);
@@ -226,7 +226,7 @@ function elevationChart(points, segments, P, light) {
   let axis = '';
   kmMarks.forEach(km => {
     const cx = Math.min(Math.max(x(km * 1000), 12), W - 12);
-    axis += `<text x="${cx.toFixed(1)}" y="${H - 6}" fill="${P.axis}" font-size="9" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${km}km</text>`;
+    axis += `<text x="${cx.toFixed(1)}" y="${H - 6}" fill="${P.axis}" font-size="10.5" font-family="'IBM Plex Mono', monospace" text-anchor="middle">${km}km</text>`;
   });
 
   let eleGrid = '';
@@ -235,13 +235,13 @@ function elevationChart(points, segments, P, light) {
     const ele = lo + (i / (eleTicks + 1)) * span;
     const gy = y(ele).toFixed(1);
     eleGrid += `<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="${P.axis}" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"/>`
-      + `<text x="4" y="${(y(ele) - 3).toFixed(1)}" fill="${P.axis}" font-size="8.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(ele)}m</text>`;
+      + `<text x="4" y="${(y(ele) - 3).toFixed(1)}" fill="${P.axis}" font-size="10" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(ele)}m</text>`;
   }
 
   const inner = axis + segLines + fills + eleGrid
     + `<path d="${line}" stroke="${P.axis}" stroke-width="1.6" fill="none" opacity="0.85"/>`
-    + `<text x="4" y="${(top + 9).toFixed(1)}" fill="${P.axis}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(hi)}m</text>`
-    + `<text x="4" y="${(H - bot - 3).toFixed(1)}" fill="${P.axis}" font-size="9" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(lo)}m</text>`;
+    + `<text x="4" y="${(top + 9).toFixed(1)}" fill="${P.axis}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(hi)}m</text>`
+    + `<text x="4" y="${(H - bot - 3).toFixed(1)}" fill="${P.axis}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${Math.round(lo)}m</text>`;
   return svgChart(W, H, inner);
 }
 
@@ -281,8 +281,8 @@ function windRoseChart(buckets, totalSec, P, light) {
   labelDefs.forEach(({ i, text, anchor }) => {
     const p = pt(i, rMax + 20);
     labels += `<text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" text-anchor="${anchor}">`
-      + `<tspan x="${p.x.toFixed(1)}" dy="-3" fill="${P.axis}" font-size="10.5" font-weight="700" font-family="'IBM Plex Mono', monospace">${text}</tspan>`
-      + `<tspan x="${p.x.toFixed(1)}" dy="15" fill="${P.tealLine}" font-size="12" font-weight="800" font-family="'IBM Plex Mono', monospace">${valueText(buckets[i])}</tspan>`
+      + `<tspan x="${p.x.toFixed(1)}" dy="-3" fill="${P.axis}" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace">${text}</tspan>`
+      + `<tspan x="${p.x.toFixed(1)}" dy="15" fill="${P.tealLine}" font-size="13" font-weight="800" font-family="'IBM Plex Mono', monospace">${valueText(buckets[i])}</tspan>`
       + `</text>`;
   });
   const inner = grid + spokes + dataShape + dots + labels;
