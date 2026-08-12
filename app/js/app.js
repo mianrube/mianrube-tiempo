@@ -3038,6 +3038,13 @@
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (!hadController || refreshing) return;
+      // Guard against reload loops (e.g. a SW that keeps re-activating): allow at most
+      // one auto-reload per short window; further changes just wait for a manual reload.
+      const RELOAD_GUARD_KEY = "sw-last-reload";
+      const now = Date.now();
+      const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || 0);
+      if (now - last < 10000) return;
+      sessionStorage.setItem(RELOAD_GUARD_KEY, String(now));
       refreshing = true;
       window.location.reload();
     });
@@ -3045,7 +3052,6 @@
       navigator.serviceWorker
         .register("sw.js", { updateViaCache: "none" })
         .then((reg) => {
-          reg.update().catch(() => {});
           document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "visible")
               reg.update().catch(() => {});
