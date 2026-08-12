@@ -136,8 +136,8 @@
     try {
       const u = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + lat + '&longitude=' + lon +
         '&current=european_aqi,pm10,pm2_5' +
-        '&hourly=alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen' +
-        '&timezone=auto&forecast_days=1';
+        '&hourly=european_aqi,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen' +
+        '&timezone=auto&forecast_days=7';
       const r = await fetch(u);
       if (!r.ok) return null;
       return await r.json();
@@ -660,7 +660,7 @@
         icon: wIcon(H.weather_code[i], H.is_day[i] === 1, 24, P),
         temp: Math.round(H.temperature_2m[i]), feels: Math.round(H.apparent_temperature[i]),
         prob: pr, probColor: probColor(pr, L),
-        mm: mmv > 0 ? mmv.toFixed(1) + 'mm' : '—', mmColor: mmColor(mmv, L),
+        mm: mmv > 0 ? mmv.toFixed(1) + ' mm' : '—', mmColor: mmColor(mmv, L),
         arrow: windArrow(H.wind_direction_10m[i], 12), dir: dirLabel(H.wind_direction_10m[i]),
         wind: Math.round(cv(H.wind_speed_10m[i])) + ' ' + uLbl, gust: Math.round(cv(H.wind_gusts_10m[i])) + ' ' + uLbl,
         uv: uvv, uvColor: uvScale(uvv, L).color,
@@ -689,7 +689,7 @@
         min: Math.round(D.temperature_2m_min[i]), max: Math.round(D.temperature_2m_max[i]),
         barLeft: ((D.temperature_2m_min[i] - allMin) / span * 100).toFixed(1) + '%',
         barWidth: (Math.max(D.temperature_2m_max[i] - D.temperature_2m_min[i], 1) / span * 100).toFixed(1) + '%',
-        rain: pp + '% · ' + mm.toFixed(1) + 'mm',
+        rain: pp + ' % · ' + mm.toFixed(1) + ' mm',
         rainIcon: uiIcon('drop', 12, pp >= 40 ? P.rain : 'var(--muted2)'),
         rainColor: pp >= 40 ? P.rain : 'var(--muted2)',
         arrow: windArrow(D.wind_direction_10m_dominant[i], 11),
@@ -760,8 +760,8 @@
         date: dt.getDate() + '/' + (dt.getMonth() + 1),
         icon: wIcon(D.weather_code[i], true, 24, P),
         max: Math.round(D.temperature_2m_max[i]) + '°', min: Math.round(D.temperature_2m_min[i]) + '°',
-        prob: pp + '%', probColor: probColor(pp, L),
-        mm: mmd > 0 ? mmd.toFixed(1) + 'mm' : '—', mmColor: mmColor(mmd, L),
+        prob: pp + ' %', probColor: probColor(pp, L),
+        mm: mmd > 0 ? mmd.toFixed(1) + ' mm' : '—', mmColor: mmColor(mmd, L),
         arrow: windArrow(D.wind_direction_10m_dominant[i], 11),
         wind: Math.round(cv(D.wind_speed_10m_max[i])), gust: Math.round(cv(D.wind_gusts_10m_max[i])),
         bg: on ? 'var(--now-bg)' : 'var(--surface)', border: on ? 'var(--now-border)' : 'var(--border)',
@@ -776,9 +776,15 @@
     const limit = Math.min(st.hourLimit || 48, total);
     const allIdxs = []; for (let i = startIdx; i < startIdx + limit; i++) allIdxs.push(i);
     let lastDate = '';
+    const aqiHourly = st.airQuality && st.airQuality.hourly;
+    const aqiIndexByHour = new Map();
+    if (aqiHourly && aqiHourly.time) aqiHourly.time.forEach((t, idx) => aqiIndexByHour.set(t.slice(0, 13), idx));
     const hourRows = allIdxs.map(i => {
       const pr = H.precipitation_probability[i] || 0, mmv = H.precipitation[i] || 0, cur = i === i0, q = sc(i);
       const uvv = Math.round((H.uv_index ? H.uv_index[i] : 0) || 0);
+      const aqiIdx = aqiIndexByHour.get(H.time[i].slice(0, 13));
+      const aqiVal = aqiIdx != null && aqiHourly.european_aqi ? Math.round(aqiHourly.european_aqi[aqiIdx]) : null;
+      const aqiStyle = aqiVal != null ? aqiScale(aqiVal, L) : null;
       const dstr = H.time[i].slice(0, 10);
       let head = '';
       if (dstr !== lastDate) {
@@ -790,14 +796,15 @@
         head, score: q.n, scoreColor: q.s.color, scoreBg: q.s.bg, scoreBorder: q.s.border,
         sportIcon: uiIcon(sport === 'bike' ? 'bike' : 'run', 11, q.s.color),
         hour: H.time[i].slice(11, 16), now: cur ? 'ahora' : '',
-        icon: wIcon(H.weather_code[i], H.is_day[i] === 1, 20, P), cond: codeInfo(H.weather_code[i])[0],
+        icon: wIcon(H.weather_code[i], H.is_day[i] === 1, 28, P), cond: codeInfo(H.weather_code[i])[0],
         temp: Math.round(H.temperature_2m[i]), feels: Math.round(H.apparent_temperature[i]),
-        prob: pr + '%', probColor: probColor(pr, L),
-        mm: mmv > 0 ? mmv.toFixed(1) + 'mm' : '—', mmColor: mmColor(mmv, L),
-        arrow: windArrow(H.wind_direction_10m[i], 11), dir: dirLabel(H.wind_direction_10m[i]),
+        prob: pr + ' %', probColor: probColor(pr, L),
+        mm: mmv.toFixed(1) + ' mm', mmColor: mmColor(mmv, L),
+        arrow: windArrow(H.wind_direction_10m[i], 13), dir: dirLabel(H.wind_direction_10m[i]),
         wind: Math.round(cv(H.wind_speed_10m[i])), gust: Math.round(cv(H.wind_gusts_10m[i])),
-        uv: uvv, uvColor: uvScale(uvv, L).color,
+        uv: uvv, uvStyle: uvScale(uvv, L),
         hum: H.relative_humidity_2m ? Math.round(H.relative_humidity_2m[i]) : null, humColor,
+        aqi: aqiVal, aqiStyle,
         bg: cur ? 'var(--now-bg)' : 'transparent'
       };
     });
@@ -1041,7 +1048,7 @@
         <div style="font-size:11.5px;font-weight:600;color:var(--warm);font-family:'IBM Plex Mono',monospace;white-space:nowrap">${h.feels}°</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:1px">
-        <div style="font-size:13px;font-weight:700;color:${h.probColor};font-family:'IBM Plex Mono',monospace">${h.prob}%</div>
+        <div style="font-size:13px;font-weight:700;color:${h.probColor};font-family:'IBM Plex Mono',monospace">${h.prob} %</div>
         <div style="font-size:12px;font-weight:600;color:${h.mmColor};font-family:'IBM Plex Mono',monospace">${h.mm}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:1px;margin-top:1px">
@@ -1054,7 +1061,7 @@
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:1px">
         <div style="font-size:12.5px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${h.uvColor};white-space:nowrap">UV ${h.uv}</div>
-        ${h.hum != null ? `<div style="display:flex;align-items:center;gap:2px;font-size:11.5px;font-weight:600;color:${h.humColor};font-family:'IBM Plex Mono',monospace;white-space:nowrap"><span style="display:flex">${uiIcon('humid', 12, h.humColor)}</span>${h.hum}%</div>` : ''}
+        ${h.hum != null ? `<div style="display:flex;align-items:center;gap:2px;font-size:11.5px;font-weight:600;color:${h.humColor};font-family:'IBM Plex Mono',monospace;white-space:nowrap"><span style="display:flex">${uiIcon('humid', 12, h.humColor)}</span>${h.hum} %</div>` : ''}
       </div>
     </div>`).join('');
 
@@ -1143,7 +1150,7 @@
         <div class="section-label" style="padding-left:2px">Luna</div>
         ${v.moonArcOk ? v.moonArc : ''}
         ${riseSetRowTpl(v.moonRiseSet)}
-        <div style="padding-top:11px;border-top:1px solid var(--border);font-size:13.5px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit}% iluminada</div>
+        <div style="padding-top:11px;border-top:1px solid var(--border);font-size:13.5px;color:var(--muted);font-weight:600">Luna ${esc(v.moonPhase)} · ${v.moonLit} % iluminada</div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:9px">
@@ -1184,35 +1191,38 @@
 
     const rows = v.hourRows.map(r => `<div>
       ${r.head ? `<div style="padding:7px 12px;background:var(--btn);border-top:1px solid var(--border);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--muted)">${esc(r.head)}</div>` : ''}
-      <div style="display:grid;grid-template-columns:40px 22px 1fr 39px 43px 16px 28px 32px;gap:4px;align-items:center;padding:9px 8px;border-top:1px solid var(--border);background:${r.bg}">
-        <div style="display:flex;flex-direction:column;min-width:0;overflow:hidden">
-          <div style="font-size:13px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">${r.hour}</div>
-          <div style="font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);white-space:nowrap">${r.now}</div>
+      <div style="display:flex;align-items:center;gap:11px;padding:12px 14px 12px 11px;border-top:1px solid var(--border);border-left:3px solid ${r.now ? 'var(--live)' : 'transparent'};background:${r.bg}">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:46px">
+          <div style="font-size:14px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">${r.hour}</div>
+          <div style="display:flex">${r.icon}</div>
         </div>
-        <div style="display:flex;justify-content:center">${r.icon}</div>
-        <div style="display:flex;flex-direction:column;min-width:0">
-          <div style="display:flex;align-items:baseline;gap:3px;font-family:'IBM Plex Mono',monospace">
-            <div style="font-size:14px;font-weight:800">${r.temp}°</div>
-            <div style="font-size:11px;font-weight:600;color:var(--warm)">${r.feels}°</div>
+        <div style="display:flex;flex-direction:column;gap:9px;flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;flex-direction:column;min-width:0;flex:1;gap:1px">
+              <div style="display:flex;align-items:baseline;gap:5px;font-family:'IBM Plex Mono',monospace">
+                <div style="font-size:17px;font-weight:800">${r.temp}°</div>
+                <div style="font-size:13px;font-weight:600;color:var(--warm)">ST ${r.feels}°</div>
+              </div>
+              <div style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 9px;border-radius:10px;background:${r.scoreBg};border:1px solid ${r.scoreBorder};flex:none">
+              <div style="display:flex">${r.sportIcon}</div>
+              <div style="font-size:14.5px;font-weight:800;color:${r.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${r.score}</div>
+            </div>
           </div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.cond)}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;min-width:0;font-family:'IBM Plex Mono',monospace">
-          <div style="font-size:12px;font-weight:800;color:${r.probColor};white-space:nowrap">${r.prob}</div>
-          <div style="font-size:10px;font-weight:600;color:${r.mmColor};white-space:nowrap">${r.mm}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;min-width:0;font-family:'IBM Plex Mono',monospace">
-          <div style="display:flex;align-items:center;gap:2px;color:var(--teal);white-space:nowrap">
-            <div style="display:flex;flex:none">${r.arrow}</div>
-            <div style="font-size:12px;font-weight:800">${r.dir}</div>
+          <div style="display:flex;align-items:center;gap:5px;color:var(--teal);font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            <span style="display:flex;flex:none">${r.arrow}</span>${r.dir} ${r.wind} km/h · racha ${r.gust} km/h
           </div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted2);white-space:nowrap">${r.wind}km/h</div>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${r.uvColor};white-space:nowrap">${r.uv}</div>
-        <div style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:${r.humColor};white-space:nowrap">${r.hum != null ? r.hum + '%' : '—'}</div>
-        <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 3px;border-radius:8px;background:${r.scoreBg};border:1px solid ${r.scoreBorder}">
-          <div style="display:flex">${r.sportIcon}</div>
-          <div style="font-size:13px;font-weight:800;color:${r.scoreColor};font-family:'IBM Plex Mono',monospace;line-height:1">${r.score}</div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+            <div style="display:inline-flex;align-items:center;gap:4px;color:${r.probColor};font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap">
+              <span style="display:flex">${uiIcon('drop', 14, r.probColor)}</span>${r.prob} · ${r.mm}
+            </div>
+            <div style="display:inline-flex;align-items:center;gap:4px;color:${r.humColor};font-size:12.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap">
+              <span style="display:flex">${uiIcon('humid', 14, r.humColor)}</span>${r.hum != null ? r.hum + ' %' : '—'}
+            </div>
+            <div style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;background:${r.uvStyle.bg};border:1px solid ${r.uvStyle.border};color:${r.uvStyle.color};font-size:12px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">UV ${r.uv}</div>
+            ${r.aqiStyle ? `<div style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;background:${r.aqiStyle.bg};border:1px solid ${r.aqiStyle.border};color:${r.aqiStyle.color};font-size:12px;font-weight:800;font-family:'IBM Plex Mono',monospace;white-space:nowrap">AQI ${r.aqi}</div>` : ''}
+          </div>
         </div>
       </div>
     </div>`).join('');
@@ -1231,9 +1241,6 @@
       <div style="display:flex;flex-direction:column;gap:9px">
         <div class="section-label" style="padding-left:2px">Detalle · ${esc(v.dayLabel)}</div>
         <div style="border-radius:20px;background:var(--surface);border:1px solid var(--border);overflow:hidden">
-          <div style="display:grid;grid-template-columns:40px 22px 1fr 39px 43px 16px 28px 32px;gap:4px;padding:9px 8px;border-bottom:1px solid var(--border);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--muted2)">
-            ${['Hora', '', 'Temp / ST', 'Lluv.', 'Viento', 'UV', 'Hum', 'Nota'].map(h => `<div style="min-width:0;overflow:hidden;white-space:nowrap">${h}</div>`).join('')}
-          </div>
           ${rows}
         </div>
         ${v.hasMore ? `<div class="pill-btn" data-action="loadMore" style="align-self:center;padding:9px 18px;font-size:13.5px">${esc(v.moreLabel)}</div>` : ''}
@@ -1360,7 +1367,7 @@
         kmRange: (seg.startDist / 1000).toFixed(1) + ' – ' + (seg.endDist / 1000).toFixed(1) + ' km',
         arrival: formatClock(seg.arrival),
         speed: Math.round(seg.speedKmh) + ' km/h',
-        grade: (seg.gradeFraction * 100).toFixed(1) + '%',
+        grade: (seg.gradeFraction * 100).toFixed(1) + ' %',
         score: seg.score, scoreColor: ss.color, scoreBg: ss.bg, scoreBorder: ss.border,
         icon: wIcon(seg.weatherInput.weatherCode, true, 22, P),
         temp: Math.round(seg.weatherInput.temperature) + '°',
@@ -1632,7 +1639,7 @@
     const rows = v.segments.map(s => `<div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
         <div style="font-size:13.5px;font-weight:800;font-family:'IBM Plex Mono',monospace">Tramo ${s.n} · ${s.kmRange}</div>
-        <div style="font-size:12px;font-weight:600;color:var(--muted)">${s.arrival} · ${s.speed} · pend. ${s.grade} · lluvia <span style="color:${s.probColor}">${s.prob}%</span></div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted)">${s.arrival} · ${s.speed} · pend. ${s.grade} · lluvia <span style="color:${s.probColor}">${s.prob} %</span></div>
         <div style="display:flex;align-items:center;gap:6px">
           <div style="display:flex">${s.icon}</div>
           <div style="font-size:13.5px;font-weight:700;font-family:'IBM Plex Mono',monospace">${s.temp}</div>
